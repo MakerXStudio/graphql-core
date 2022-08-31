@@ -19,16 +19,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v2
+      - name: Use Node.js latest LTS version
+        uses: actions/setup-node@v3
         with:
-          node-version: ${{ matrix.node-version }}
-          # == Cache frequently built and/or with large dependencies ==
-          # == Eviction policy: not accessed in over 7 days
-          # == Limit: 10 GB
-          # cache: 'npm'
-          # == Path to lock file when using mono repos ==
-          # cache-dependency-path: subdir/package-lock.json
+          node-version: lts/*
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@makerxstudio"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore packages
         run: npm ci
