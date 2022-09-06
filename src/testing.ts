@@ -1,18 +1,18 @@
 import { ApolloClient, createHttpLink, from, InMemoryCache, NormalizedCacheObject } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
+import fetch from 'cross-fetch'
 import { AccessTokenResponse, ClientCredentialsConfig, getClientCredentialsToken } from '@makerxstudio/node-common'
 
 export * from '@apollo/client/core'
 
 const bearerTokenLink = (accessToken?: string) =>
   setContext(() => {
-    if (accessToken)
-      return {
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-        },
-      }
-    return undefined
+    if (!accessToken) return undefined
+    return {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    }
   })
 
 const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig) => {
@@ -33,7 +33,6 @@ const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig)
 }
 
 const httpLink = (url: string) =>
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-return
   createHttpLink({
     uri: url,
     fetch: fetch as unknown as WindowOrWorkerGlobalScope['fetch'],
