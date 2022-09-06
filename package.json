@@ -1,12 +1,12 @@
 {
   "name": "@makerxstudio/graphql-core",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": false,
   "description": "",
   "author": "MakerX",
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
@@ -14,7 +14,10 @@
     "node": ">=16.0"
   },
   "scripts": {
-    "build": "rimraf dist coverage && tsc -p tsconfig.build.json",
+    "build": "run-s build:*",
+    "build:0-clean": "rimraf dist coverage",
+    "build:1-compile": "tsc -p tsconfig.build.json",
+    "build:2-copy-pkg-json": "node ./scripts/copy-package-json.js",
     "test": "jest --coverage --passWithNoTests",
     "lint": "eslint ./src/ --ext .ts",
     "lint:fix": "eslint ./src/ --ext .ts --fix"
@@ -49,6 +52,7 @@
     "express": "^4.18.1",
     "graphql": "^16.6.0",
     "jest-date": "^1.1.4",
+    "npm-run-all": "^4.1.5",
     "prettier": "^2.7.1",
     "rimraf": "^3.0.2",
     "ts-jest": "^28.0.7",
