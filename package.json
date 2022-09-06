@@ -1,12 +1,12 @@
 {
   "name": "@makerxstudio/graphql-core",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": false,
   "description": "",
   "author": "MakerX",
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
@@ -14,7 +14,7 @@
     "node": ">=16.0"
   },
   "scripts": {
-    "build": "rimraf dist coverage && tsc -p tsconfig.build.json",
+    "build": "rimraf dist coverage && tsc -p tsconfig.build.json && copyfiles package.json package-lock.json dist",
     "test": "jest --coverage --passWithNoTests",
     "lint": "eslint ./src/ --ext .ts",
     "lint:fix": "eslint ./src/ --ext .ts --fix"
@@ -41,6 +41,7 @@
     "@types/node-fetch": "^2.6.2",
     "@typescript-eslint/eslint-plugin": "^5.33.0",
     "@typescript-eslint/parser": "^5.33.0",
+    "copyfiles": "^2.4.1",
     "cross-fetch": "^3.1.5",
     "eslint": "8.22.0",
     "eslint-config-prettier": "^8.5.0",

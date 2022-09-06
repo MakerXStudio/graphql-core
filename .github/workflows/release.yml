@@ -41,7 +41,6 @@ jobs:
         uses: JS-DevTools/npm-publish@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          package: 'package.json'
+          package: './dist/package.json'
           check-version: true
-          registry: "https://npm.pkg.github.com"
-
+          registry: 'https://npm.pkg.github.com'
