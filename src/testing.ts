@@ -7,12 +7,12 @@ export * from '@apollo/client/core'
 
 const bearerTokenLink = (accessToken?: string) =>
   setContext(() => {
-    if (!accessToken) return undefined
-    return {
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-      },
-    }
+    if (accessToken)
+      return {
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+        },
+      }
   })
 
 const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig) => {
