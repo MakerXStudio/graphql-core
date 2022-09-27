@@ -5,8 +5,6 @@
   "description": "",
   "author": "MakerX",
   "license": "MIT",
-  "main": "index.js",
-  "types": "index.d.ts",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
@@ -17,7 +15,7 @@
     "build": "run-s build:*",
     "build:0-clean": "rimraf dist coverage",
     "build:1-compile": "tsc -p tsconfig.build.json",
-    "build:2-copy-pkg-json": "node ./scripts/copy-package-json.js",
+    "build:2-copy-pkg-json": "npx --yes @makerx/ts-toolkit copy-package-json",
     "test": "jest --coverage --passWithNoTests",
     "lint": "eslint ./src/ --ext .ts",
     "lint:fix": "eslint ./src/ --ext .ts --fix"
