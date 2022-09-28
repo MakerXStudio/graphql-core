@@ -10,12 +10,12 @@ Note: See explaination on \*Express peer dependency below.
 
 `createContextFactory` returns a function that creates your GraphQL context using a standard (customisable) representation, including:
 
-- logger: a logger instance to use downstream of resolvers, usually logging some request metadata to assist correlating log entries (for example the X-Correlation-Id header value)
-- requestInfo: useful request info, for example to define per-request behaviour (multi-tenant apps), pass through correlation headers to downstream services etc
-- user: a user object containing claims, usually a decoded JWT payload
+- `logger`: a logger instance to use downstream of resolvers, usually logging some request metadata to assist correlating log entries (for example the X-Correlation-Id header value)
+- `requestInfo`: useful request info, for example to define per-request behaviour (multi-tenant apps), pass through correlation headers to downstream services etc
+- `user`: a `User` object representing the user or system identity (see definition below)
 - anything else you wish to add to the context
 
-### Step 1 - define your context + creation
+### Step 1 - Define your context + creation
 
 context.ts
 
@@ -49,7 +49,7 @@ export const createContext = createContextFactory<GraphQLContext>({
 
 ### Step 2 - Map the context creation to implementation
 
-These examples show how you might map implementation-specific context functions to your implementation-agnostic context creation function.
+These examples show how you might map implementation-specific context functions to your implementation-agnostic context creation function (from step 1).
 
 app.ts
 
@@ -84,12 +84,12 @@ const graphqlServer = createServer({
 
 ## User
 
-The User class adds some handy getters over the raw claims (JWT payload) to provides access to the JWT (access token) for on-behalf-of downstream authentication flows. Note this may represent a user or service principal (system) identity.
+The User class adds some handy getters over raw claims (decodedJWT payload) and provides access to the JWT (access token) for on-behalf-of downstream authentication flows. Note this may represent a user or service principal (system) identity.
 
 | Property | Description                                                                                  |
 | -------- | -------------------------------------------------------------------------------------------- |
-| claims   | The decoded JWT payload, set via the RequestInput.user field                                 |
-| token    | The bearer token from the request authorization header                                       |
+| claims   | The decoded JWT payload, set via the RequestInput.user field.                                |
+| token    | The bearer token from the request authorization header.                                      |
 | email    | The user's email via coalesced claim values: email, preferred_username, unique_name, upn.    |
 | name     | The user's name (via the name claim).                                                        |
 | oid      | The user's unique and immutable ID, useful for contextual differentiation e.g. session keys. |
@@ -100,19 +100,22 @@ The User class adds some handy getters over the raw claims (JWT payload) to prov
 
 This library exports a `logGraphQLOperation` function which will log:
 
-- operationName: the operation name, if supplied
-- query: the graphql query or mutation, or 'IntrospectionQuery'
-- variables: the graphql request variables
-- duration: the duration of request processing
-- errors: the graphql response errors, if any
+- `operationName`: the operation name, if supplied
+- `query`: the formatted graphql query or mutation, or 'IntrospectionQuery'
+- `variables`: the graphql request variables
+- `duration`: the duration of request processing
+- `errors`: the graphql response errors, if any
 
-Falsy values will not be logged.
+Notes:
 
-This function can be used across implementations, e.g. in an graphql-envelop plugin or ApolloServer plugin.
+- null or undefined values will be omitted
+- introspection queries will not be logged outside of production
+
+This function can be used across implementations, e.g. in a [GraphQL Envelop plugin](https://www.envelop.dev/docs/plugins) or [ApolloServer plugin](https://www.apollographql.com/docs/apollo-server/integrations/plugins/).
 
 ## Testing
 
-The testing submodule exports utility functions for easily constructing ApolloClient instances for integration testing on NodeJS. The errorPolicy is set to 'all' so that returned errors can be checked.
+The testing submodule exports utility functions for easily constructing ApolloClient instances for integration testing on NodeJS. The `errorPolicy` is set to `all` so that returned errors can be checked.
 
 - `createTestClient` accepts a url and optional accessToken.
 - `createTestClientWithClientCredentials` accepts a url and client credentials config and will fetch and attach an access token to each request.
@@ -133,16 +136,8 @@ describe('tweets query', () => {
     query Tweets($input: TweetsWhere) {
       tweets(input: $input) {
         data {
-          id
           text
           createdAt
-        }
-        meta {
-          oldestId
-          newestId
-          resultCount
-          nextToken
-          previousToken
         }
       }
     }
@@ -189,7 +184,7 @@ describe('tweets query', () => {
 
 ## Utils
 
-- `isIntrospectionQuery` returns true if the query is an introspection query, based on the operation name or query content.
+- `isIntrospectionQuery`: indicates whether the query is an introspection query, based on the operation name or query content.
 
 ## \*Express peer dependency
 
