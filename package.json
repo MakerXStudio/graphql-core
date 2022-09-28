@@ -19,6 +19,7 @@
     "test": "jest --coverage --passWithNoTests",
     "lint": "eslint ./src/ --ext .ts",
     "lint:fix": "eslint ./src/ --ext .ts --fix",
+    "check-types": "tsc --noEmit",
     "audit": "npm audit"
   },
   "dependencies": {
