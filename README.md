@@ -4,11 +4,11 @@ A set of core GraphQL utilities that MakerX uses to build GraphQL APIs.
 
 These utilities avoid dependencies on any particular GraphQL server or logging implementation, providing a standard set of behaviours to use across varying implementations.
 
-Note: See explaination on \*Express peer dependency below.
+Note: See explanation on \*Express peer dependency below.
 
 ## Context
 
-`createContextFactory` returns a function that creates your GraphQL context using a standard (customisable) representation, including:
+`createContextFactory` returns a function that creates your GraphQL context using a standard (extensible) representation, including:
 
 - `logger`: a logger instance to use downstream of resolvers, usually logging some request metadata to assist correlating log entries (for example the X-Correlation-Id header value)
 - `requestInfo`: useful request info, for example to define per-request behaviour (multi-tenant apps), pass through correlation headers to downstream services etc
