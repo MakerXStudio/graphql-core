@@ -1,6 +1,6 @@
 import { ApolloClient, createHttpLink, from, InMemoryCache, NormalizedCacheObject } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
-import fetch from 'cross-fetch'
+import fetch from 'node-fetch'
 import { AccessTokenResponse, ClientCredentialsConfig, getClientCredentialsToken } from '@makerxstudio/node-common'
 
 export * from '@apollo/client/core'
@@ -36,7 +36,7 @@ const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig)
 const httpLink = (url: string) =>
   createHttpLink({
     uri: url,
-    fetch: fetch as unknown as WindowOrWorkerGlobalScope['fetch'],
+    fetch: fetch,
   })
 
 export const createTestClient = (url: string, accessToken?: string): ApolloClient<NormalizedCacheObject> =>

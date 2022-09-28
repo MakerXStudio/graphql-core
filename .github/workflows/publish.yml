@@ -1,0 +1,17 @@
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ci:
+    uses: makerxstudio/shared-config/.github/workflows/node-ci.yml@main
+  publish:
+    needs: ci
+    uses: makerxstudio/shared-config/.github/workflows/node-publish-internal.yml@main

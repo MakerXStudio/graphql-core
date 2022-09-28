@@ -1,6 +1,6 @@
 import { Logger } from '@makerxstudio/node-common'
 import { randomUUID } from 'crypto'
-import { Request } from 'express'
+import type { Request } from 'express'
 import pick from 'lodash.pick'
 import { Claims, User } from './User'
 
