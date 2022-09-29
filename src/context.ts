@@ -2,7 +2,7 @@ import { Logger } from '@makerxstudio/node-common'
 import { randomUUID } from 'crypto'
 import type { Request } from 'express'
 import pick from 'lodash.pick'
-import { Claims, User } from './User'
+import { User } from './User'
 
 export interface GraphQLContext<TLogger extends Logger = Logger, TRequestInfo extends BaseRequestInfo = RequestInfo> {
   logger: TLogger
@@ -30,9 +30,31 @@ export type LambdaEvent = never
 export type LambdaRequestInfo = BaseRequestInfo & LambdaContext
 export type RequestInfo = BaseRequestInfo | LambdaRequestInfo
 
+// standard claims https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
+export interface JwtPayload {
+  [key: string]: unknown
+  name?: string | undefined
+  email?: string | undefined
+  given_name?: string | undefined
+  family_name?: string | undefined
+  preferred_username?: string | undefined
+  upn?: string | undefined
+  unique_name?: string | undefined
+  oid?: string | undefined
+  iss?: string | undefined
+  sub?: string | undefined
+  aud?: string | string[] | undefined
+  roles?: string[] | undefined
+  scp?: string | undefined
+  exp?: number | undefined
+  nbf?: number | undefined
+  iat?: number | undefined
+  jti?: string | undefined
+}
+
 export interface ContextInput {
   req: Request
-  user?: Claims
+  user?: JwtPayload
   context?: LambdaContext
   event?: LambdaEvent
 }

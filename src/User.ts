@@ -1,12 +1,10 @@
-export type Claims = Record<string, string | undefined> & {
-  roles: string[] | undefined
-}
+import { JwtPayload } from './context'
 
 export class User {
   public readonly token: string
-  public readonly claims: Claims
+  public readonly claims: JwtPayload
 
-  constructor(claims: Claims, accessToken: string) {
+  constructor(claims: JwtPayload, accessToken: string) {
     this.claims = claims
     this.token = accessToken
   }
