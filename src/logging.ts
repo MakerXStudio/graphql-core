@@ -17,7 +17,7 @@ interface GraphQLLogOperationInfo {
 }
 
 export const logGraphQLOperation = ({ started, operationName, query, variables, result: { errors }, logger }: GraphQLLogOperationInfo) => {
-  const isIntrospection = query && isIntrospectionQuery({ operationName, query })
+  const isIntrospection = query && isIntrospectionQuery(query)
   if (isLocalDev && isIntrospection) return
   logger.info(
     'GraphQL operation',
