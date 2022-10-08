@@ -1,4 +1,5 @@
 import { JwtPayload } from './context'
+import { compact } from './utils'
 
 export class User {
   public readonly token: string
@@ -10,11 +11,18 @@ export class User {
   }
 
   get email(): string {
-    return this.claims.email ?? this.claims.preferred_username ?? this.claims.unique_name ?? this.claims.upn ?? ''
+    return (
+      this.claims.email ??
+      (this.claims.emails as string[] | undefined)?.[0] ??
+      this.claims.preferred_username ??
+      this.claims.unique_name ??
+      this.claims.upn ??
+      ''
+    )
   }
 
   get name(): string {
-    return this.claims.name ?? ''
+    return this.claims.name ?? compact(this.claims.given_name, this.claims.family_name).join(' ') ?? ''
   }
 
   get oid(): string {
