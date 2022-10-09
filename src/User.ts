@@ -25,6 +25,14 @@ export class User {
     return this.claims.name ?? compact(this.claims.given_name, this.claims.family_name).join(' ') ?? ''
   }
 
+  get firstName(): string {
+    return this.claims.given_name ?? ''
+  }
+
+  get lastName(): string {
+    return this.claims.family_name ?? ''
+  }
+
   get oid(): string {
     return this.claims.oid ?? ''
   }
