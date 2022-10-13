@@ -84,7 +84,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
 }: CreateContextConfig<TContext>): CreateContext<TContext> => {
   // the function that creates the GraphQL context
   return (input: ContextInput) => {
-    const { req, user: claims, context } = input
+    const { req, user: claimsOrUser, context } = input
 
     // build base request info from the request
     const baseRequestInfo: BaseRequestInfo = {
@@ -126,16 +126,16 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
       // add request info to log
       if (requestInfoToLog?.length) requestLoggerMetadata.request = pick(requestInfo, requestInfoToLog)
       // add user claims to log
-      if (claims && userClaimsToLog?.length) requestLoggerMetadata.user = pick(claims, userClaimsToLog)
+      if (claimsOrUser && userClaimsToLog?.length) requestLoggerMetadata.user = pick(claimsOrUser, userClaimsToLog)
       // build the request logger
       logger = requestLogger(requestLoggerMetadata)
     } else logger = requestLogger
 
     let user: User | undefined = undefined
     // instantiate the User instance, if none supplied
-    if (claims && !(claims instanceof User)) {
+    if (claimsOrUser && !(claimsOrUser instanceof User)) {
       const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
-      user = new User(claims, accessToken)
+      user = new User(claimsOrUser, accessToken)
     }
 
     const graphqlContext: GraphQLContext = {
