@@ -4,10 +4,14 @@ import type { Request } from 'express'
 import pick from 'lodash.pick'
 import { User } from './User'
 
-export interface GraphQLContext<TLogger extends Logger = Logger, TRequestInfo extends BaseRequestInfo = RequestInfo> {
+export interface GraphQLContext<
+  TLogger extends Logger = Logger,
+  TRequestInfo extends BaseRequestInfo = RequestInfo,
+  TUser extends User = User
+> {
   logger: TLogger
   requestInfo: TRequestInfo
-  user?: User
+  user?: TUser
   started: number
 }
 
@@ -54,7 +58,7 @@ export interface JwtPayload {
 
 export interface ContextInput {
   req: Request
-  user?: JwtPayload
+  user?: JwtPayload | User
   context?: LambdaContext
   event?: LambdaEvent
 }
@@ -127,9 +131,12 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
       logger = requestLogger(requestLoggerMetadata)
     } else logger = requestLogger
 
-    // build the User class
-    const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
-    const user = claims ? new User(claims, accessToken) : undefined
+    let user: User | undefined = undefined
+    // instantiate the User instance, if none supplied
+    if (claims && !(claims instanceof User)) {
+      const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
+      user = new User(claims, accessToken)
+    }
 
     const graphqlContext: GraphQLContext = {
       requestInfo,

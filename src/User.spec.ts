@@ -1,3 +1,4 @@
+import { JwtPayload } from './context'
 import { User } from './User'
 
 describe('User', () => {
@@ -18,7 +19,7 @@ describe('User', () => {
     }
     const user = new User(b2cClaims, '')
 
-    expect(user.oid).toMatchInlineSnapshot(`""`)
+    expect(user.id).toMatchInlineSnapshot(`"802d0ae4-71ec-4492-a408-f624866715df"`)
     expect(user.email).toMatchInlineSnapshot(`"hungry.hippo@makerx.com.au"`)
     expect(user.name).toMatchInlineSnapshot(`"Hungry"`)
     expect(user.scopes).toMatchInlineSnapshot(`
@@ -58,7 +59,7 @@ describe('User', () => {
 
     const user = new User(claims, '')
 
-    expect(user.oid).toMatchInlineSnapshot(`"78f7d812-113a-4c68-9e49-e085b0347769"`)
+    expect(user.id).toMatchInlineSnapshot(`"78f7d812-113a-4c68-9e49-e085b0347769"`)
     expect(user.email).toMatchInlineSnapshot(`"hungry@somewhere.onmicrosoft.com"`)
     expect(user.name).toMatchInlineSnapshot(`"Hungry Hippo (MakerX)"`)
     expect(user.scopes).toMatchInlineSnapshot(`
@@ -88,14 +89,37 @@ describe('User', () => {
 
     const user = new User(claims, '')
 
-    expect(user.oid).toMatchInlineSnapshot(`"81ffef74-4998-4a98-900a-b47cc9bc00b9"`)
-    expect(user.email).toMatchInlineSnapshot(`""`)
-    expect(user.name).toMatchInlineSnapshot(`""`)
+    expect(user.id).toMatchInlineSnapshot(`"81ffef74-4998-4a98-900a-b47cc9bc00b9"`)
+    expect(user.email).toBeUndefined()
+    expect(user.name).toBeUndefined()
     expect(user.scopes).toMatchInlineSnapshot(`
       [
         "API.Scope",
       ]
     `)
     expect(user.roles).toMatchInlineSnapshot(`[]`)
+  })
+
+  it('can extend User, e.g. adding user supplied roles', () => {
+    class CustomUser extends User {
+      private customRoles: string[]
+      constructor(claims: JwtPayload, token: string, roles: string[]) {
+        super(claims, token)
+        this.customRoles = roles
+      }
+      get roles(): string[] {
+        return [...(this.claims.roles ?? []), ...this.customRoles]
+      }
+    }
+
+    const user = new CustomUser({ roles: ['ClaimRole'] }, '', ['CustomRole'])
+
+    expect(user instanceof User).toBe(true)
+    expect(user.roles).toMatchInlineSnapshot(`
+      [
+        "ClaimRole",
+        "CustomRole",
+      ]
+    `)
   })
 })

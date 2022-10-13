@@ -10,23 +10,25 @@ export class User {
     this.token = accessToken
   }
 
-  get email(): string {
+  get email(): string | undefined {
     return (
       this.claims.email ??
       (this.claims.emails as string[] | undefined)?.[0] ??
       this.claims.preferred_username ??
       this.claims.unique_name ??
-      this.claims.upn ??
-      ''
+      this.claims.upn
     )
   }
 
-  get name(): string {
-    return this.claims.name ?? compact(this.claims.given_name, this.claims.family_name).join(' ') ?? ''
+  get name(): string | undefined {
+    if (this.claims.name) return this.claims.name
+    const otherNames = compact([this.claims.given_name, this.claims.family_name])
+    if (otherNames.length > 0) return otherNames.join(' ')
+    return undefined
   }
 
-  get oid(): string {
-    return this.claims.oid ?? ''
+  get id(): string {
+    return this.firstOrThrow('oid', 'sub')
   }
 
   get scopes(): string[] {
@@ -35,5 +37,18 @@ export class User {
 
   get roles(): string[] {
     return this.claims.roles ?? []
+  }
+
+  private first(...claims: Array<keyof JwtPayload>): string | undefined {
+    for (const key of claims) {
+      if (this.claims[key]) return this.claims[key] as string
+    }
+    return undefined
+  }
+
+  private firstOrThrow(...claims: Array<keyof JwtPayload>): string {
+    const first = this.first(...claims)
+    if (!first) throw new Error(`claims do not include any of: ${claims.join(', ')}`)
+    return first
   }
 }
