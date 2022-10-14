@@ -4,10 +4,14 @@ import type { Request } from 'express'
 import pick from 'lodash.pick'
 import { User } from './User'
 
-export interface GraphQLContext<TLogger extends Logger = Logger, TRequestInfo extends BaseRequestInfo = RequestInfo, TUser = unknown> {
+export interface GraphQLContext<
+  TLogger extends Logger = Logger,
+  TRequestInfo extends BaseRequestInfo = RequestInfo,
+  TUser = User | undefined
+> {
   logger: TLogger
   requestInfo: TRequestInfo
-  user?: TUser
+  user: TUser
   started: number
 }
 
@@ -52,11 +56,10 @@ export interface JwtPayload {
   jti?: string | undefined
 }
 
-export type CreateUser<T = unknown> = (input: Omit<ContextInput, 'createUser'>) => Promise<T>
+export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T>
 export interface ContextInput {
   req: Request
   claims?: JwtPayload
-  createUser?: CreateUser
   context?: LambdaContext
   event?: LambdaEvent
 }
@@ -69,6 +72,7 @@ export interface CreateContextConfig<TContext = GraphQLContext> {
   requestLogger: CreateRequestLogger | Logger
   augmentRequestInfo?: AugmentRequestInfo
   claimsToLog?: string[]
+  createUser?: CreateUser
   requestInfoToLog?: Array<keyof RequestInfo>
   augmentContext?: (context: TContext) => Record<string, unknown>
 }
@@ -77,12 +81,13 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
   requestLogger,
   augmentRequestInfo,
   claimsToLog,
+  createUser = defaultCreateUser,
   requestInfoToLog,
   augmentContext,
 }: CreateContextConfig<TContext>): CreateContext<TContext> => {
   // the function that creates the GraphQL context
   return async (input: ContextInput) => {
-    const { req, claims, createUser = defaultCreateUser, context } = input
+    const { req, claims, context } = input
 
     // build base request info from the request
     const baseRequestInfo: BaseRequestInfo = {
