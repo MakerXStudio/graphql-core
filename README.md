@@ -101,7 +101,7 @@ The User class adds some handy getters over raw claims (decodedJWT payload) and 
 
 ### Custom user
 
-If you wish to customise your `GraphQLContext.user` object, provide a `createUser` function.
+If you wish to customise your `GraphQLContext.user` object, provide a `createUser` function to override the default `User` creation.
 
 ```ts
 const createUser: CreateUser = async ({ claims }) => {
