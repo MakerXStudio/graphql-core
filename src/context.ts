@@ -52,7 +52,7 @@ export interface JwtPayload {
   jti?: string | undefined
 }
 
-export type CreateUser<T = unknown> = (input: Omit<ContextInput, 'createUser'>) => T
+export type CreateUser<T = unknown> = (input: Omit<ContextInput, 'createUser'>) => Promise<T>
 export interface ContextInput {
   req: Request
   claims?: JwtPayload
@@ -60,7 +60,7 @@ export interface ContextInput {
   context?: LambdaContext
   event?: LambdaEvent
 }
-export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => TContext
+export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => Promise<TContext>
 
 export type CreateRequestLogger = (requestMetadata: Record<string, unknown>) => Logger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
@@ -81,7 +81,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
   augmentContext,
 }: CreateContextConfig<TContext>): CreateContext<TContext> => {
   // the function that creates the GraphQL context
-  return (input: ContextInput) => {
+  return async (input: ContextInput) => {
     const { req, claims, createUser = defaultCreateUser, context } = input
 
     // build base request info from the request
@@ -132,7 +132,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
     const graphqlContext: GraphQLContext = {
       requestInfo,
       logger,
-      user: createUser ? createUser(input) : undefined,
+      user: createUser ? await createUser(input) : undefined,
       started: Date.now(),
     }
 
@@ -143,7 +143,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
 }
 
 const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
-  if (!claims) return undefined
+  if (!claims) return Promise.resolve(undefined)
   const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
-  return new User(claims, accessToken)
+  return Promise.resolve(new User(claims, accessToken))
 }

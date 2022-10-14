@@ -12,7 +12,7 @@ Note: See explanation on \*Express peer dependency below.
 
 - `logger`: a logger instance to use downstream of resolvers, usually logging some request metadata to assist correlating log entries (for example the X-Correlation-Id header value)
 - `requestInfo`: useful request info, for example to define per-request behaviour (multi-tenant apps), pass through correlation headers to downstream services etc
-- `user`: a `User` object representing the user or system identity (see definition below)
+- `user`: an object representing the user or system identity (see definition below, defaults to creating a `User` based on JWT claims)
 - anything else you wish to add to the context
 
 ### Step 1 - Define your context + creation
@@ -33,7 +33,7 @@ export type GraphQLContext = BaseContext & ExtraContext
 // configure the createContext function
 export const createContext = createContextFactory<GraphQLContext>({
   // set the keys of the user claims (JWT payload) we want added to the request metadata passed to the requestLogger factory
-  userClaimsToLog: ['oid', 'aud', 'tid', 'azp', 'iss', 'scp', 'roles'],
+  claimsToLog: ['oid', 'aud', 'tid', 'azp', 'iss', 'scp', 'roles'],
   // set the keys of the request info we want added to the request metadata passed to the requestLogger factory
   requestInfoToLog: ['referer', 'requestId', 'correlationId'],
   // use a winston child logger to add metadata to log output
@@ -50,14 +50,15 @@ export const createContext = createContextFactory<GraphQLContext>({
 ### Step 2 - Map the context creation to implementation
 
 These examples show how you might map implementation-specific context functions to your implementation-agnostic context creation function (from step 1).
+Note: examples assume that a JWT auth middleware has set `req.user` to the decoded token payload (claims). This is optional.
 
 app.ts
 
 ```ts
-// wire up the createContext function, providing `ContextInput` for apollo-server-express implementation
+// wire up the createContext function, providing `ContextInput` for apollo-server-express implementation)
 const server = new ApolloServer({
   ...apolloServerConfig,
-  context: ({ req }) => createContext({ req, user: req.user as Claims }),
+  context: ({ req }) => createContext({ req, claims: req.user }),
 })
 ```
 
@@ -68,7 +69,7 @@ lambda.ts
 const server = new ApolloServer({
   ...apolloServerConfig,
   context: ({ event, context, express: { req } }) =>
-    createContext({ req, user: req.user as Claims, event: event as LambdaEvent, context: context as LambdaContext }),
+    createContext({ req, claims: req.user, event: event as LambdaEvent, context: context as LambdaContext }),
 })
 ```
 
@@ -78,23 +79,41 @@ yoga.ts
 // wire up the createContext function, providing `ContextInput` for graphql-yoga implementation
 const graphqlServer = createServer({
   ...yogaServerConfig,
-  context: ({ req }) => createContext({ req, user: req.user as Claims }),
+  context: ({ req }) => createContext({ req, claims: req.user }),
 })
 ```
 
 ## User
 
+By default, if `claims` (decoded token `JwtPayload`) are available, the `GraphQLContext.user` property will be set by constructing a `User` instance.
+
 The User class adds some handy getters over raw claims (decodedJWT payload) and provides access to the JWT (access token) for on-behalf-of downstream authentication flows. Note this may represent a user or service principal (system) identity.
 
-| Property | Description                                                                                  |
-| -------- | -------------------------------------------------------------------------------------------- |
-| claims   | The decoded JWT payload, set via the RequestInput.user field.                                |
-| token    | The bearer token from the request authorization header.                                      |
-| email    | The user's email via coalesced claim values: email, preferred_username, unique_name, upn.    |
-| name     | The user's name (via the name claim).                                                        |
-| oid      | The user's unique and immutable ID, useful for contextual differentiation e.g. session keys. |
-| scopes   | The user's scopes, via the scp claim split into an array of scopes.                          |
-| roles    | The user's roles (via the roles claim).                                                      |
+| Property | Description                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| claims   | The decoded JWT payload, set via the RequestInput.user field.                                                       |
+| token    | The bearer token from the request authorization header.                                                             |
+| email    | The user's email via coalesced claim values: email, emails, preferred_username, unique_name, upn.                   |
+| name     | The user's name (via the name or given_name and family_name claims).                                                |
+| id       | The user's unique and immutable ID, useful for contextual differentiation e.g. session keys (the oid or sub claim). |
+| scopes   | The user's scopes, via the scp claim split into an array of scopes.                                                 |
+| roles    | The user's roles (via the roles claim).                                                                             |
+
+### Custom user
+
+If you wish to customise your `GraphQLContext.user` object, provide a `createUser` function.
+
+```ts
+const createUser: CreateUser = async ({ claims }) => {
+  const roles = await loadRoles(claims.email)
+  return { name: claims.name, email: claims.email, roles }
+}
+
+const graphqlServer = createServer({
+  ...config,
+  context: ({ req }) => createContext({ req, claims: req.user, createUser }),
+})
+```
 
 ## Logging
 
