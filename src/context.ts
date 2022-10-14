@@ -4,11 +4,7 @@ import type { Request } from 'express'
 import pick from 'lodash.pick'
 import { User } from './User'
 
-export interface GraphQLContext<
-  TLogger extends Logger = Logger,
-  TRequestInfo extends BaseRequestInfo = RequestInfo,
-  TUser extends User = User
-> {
+export interface GraphQLContext<TLogger extends Logger = Logger, TRequestInfo extends BaseRequestInfo = RequestInfo, TUser = unknown> {
   logger: TLogger
   requestInfo: TRequestInfo
   user?: TUser
@@ -56,21 +52,23 @@ export interface JwtPayload {
   jti?: string | undefined
 }
 
+export type CreateUser<T = unknown> = (input: Omit<ContextInput, 'createUser'>) => T
 export interface ContextInput {
   req: Request
-  user?: JwtPayload | User
+  claims?: JwtPayload
+  createUser?: CreateUser
   context?: LambdaContext
   event?: LambdaEvent
 }
 export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => TContext
 
-export type RequestLoggerFactory = (requestMetadata: Record<string, unknown>) => Logger
+export type CreateRequestLogger = (requestMetadata: Record<string, unknown>) => Logger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
 
 export interface CreateContextConfig<TContext = GraphQLContext> {
-  requestLogger: RequestLoggerFactory | Logger
+  requestLogger: CreateRequestLogger | Logger
   augmentRequestInfo?: AugmentRequestInfo
-  userClaimsToLog?: string[]
+  claimsToLog?: string[]
   requestInfoToLog?: Array<keyof RequestInfo>
   augmentContext?: (context: TContext) => Record<string, unknown>
 }
@@ -78,13 +76,13 @@ export interface CreateContextConfig<TContext = GraphQLContext> {
 export const createContextFactory = <TContext extends GraphQLContext = GraphQLContext>({
   requestLogger,
   augmentRequestInfo,
-  userClaimsToLog,
+  claimsToLog,
   requestInfoToLog,
   augmentContext,
 }: CreateContextConfig<TContext>): CreateContext<TContext> => {
   // the function that creates the GraphQL context
   return (input: ContextInput) => {
-    const { req, user: claimsOrUser, context } = input
+    const { req, claims, createUser = defaultCreateUser, context } = input
 
     // build base request info from the request
     const baseRequestInfo: BaseRequestInfo = {
@@ -126,22 +124,15 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
       // add request info to log
       if (requestInfoToLog?.length) requestLoggerMetadata.request = pick(requestInfo, requestInfoToLog)
       // add user claims to log
-      if (claimsOrUser && userClaimsToLog?.length) requestLoggerMetadata.user = pick(claimsOrUser, userClaimsToLog)
+      if (claims && claimsToLog?.length) requestLoggerMetadata.user = pick(claims, claimsToLog)
       // build the request logger
       logger = requestLogger(requestLoggerMetadata)
     } else logger = requestLogger
 
-    let user: User | undefined = undefined
-    // instantiate the User instance, if none supplied
-    if (claimsOrUser && !(claimsOrUser instanceof User)) {
-      const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
-      user = new User(claimsOrUser, accessToken)
-    }
-
     const graphqlContext: GraphQLContext = {
       requestInfo,
       logger,
-      user,
+      user: createUser ? createUser(input) : undefined,
       started: Date.now(),
     }
 
@@ -149,4 +140,10 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
 
     return augmentedGraphQLContext as TContext
   }
+}
+
+const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
+  if (!claims) return undefined
+  const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
+  return new User(claims, accessToken)
 }
