@@ -1,8 +1,7 @@
 import { isLocalDev, Logger } from '@makerxstudio/node-common'
 import { GraphQLFormattedError } from 'graphql'
-import isNil from 'lodash.isnil'
 import omitBy from 'lodash.omitby'
-import { isIntrospectionQuery } from './utils'
+import { isIntrospectionQuery, isNil } from './utils'
 
 interface GraphQLLogOperationInfo {
   started: number

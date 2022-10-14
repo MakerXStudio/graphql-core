@@ -1,5 +1,5 @@
 import { JwtPayload } from './context'
-import { compact } from './utils'
+import { isNotNil } from './utils'
 
 export class User {
   public readonly token: string
@@ -22,7 +22,7 @@ export class User {
 
   get name(): string | undefined {
     if (this.claims.name) return this.claims.name
-    const otherNames = compact([this.claims.given_name, this.claims.family_name])
+    const otherNames = [this.claims.given_name, this.claims.family_name].filter(isNotNil)
     if (otherNames.length > 0) return otherNames.join(' ')
     return undefined
   }
