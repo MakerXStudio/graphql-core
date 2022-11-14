@@ -7,7 +7,7 @@ import { User } from './User'
 export interface GraphQLContext<
   TLogger extends Logger = Logger,
   TRequestInfo extends BaseRequestInfo = RequestInfo,
-  TUser = User | undefined
+  TUser = User | undefined,
 > {
   logger: TLogger
   requestInfo: TRequestInfo

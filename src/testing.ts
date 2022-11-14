@@ -36,7 +36,7 @@ const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig)
 const httpLink = (url: string) =>
   createHttpLink({
     uri: url,
-    fetch: fetch,
+    fetch: fetch as WindowOrWorkerGlobalScope['fetch'],
   })
 
 export const createTestClient = (url: string, accessToken?: string): ApolloClient<NormalizedCacheObject> =>
@@ -52,7 +52,7 @@ export const createTestClient = (url: string, accessToken?: string): ApolloClien
 
 export const createTestClientWithClientCredentials = (
   url: string,
-  clientCredentialsConfig: ClientCredentialsConfig
+  clientCredentialsConfig: ClientCredentialsConfig,
 ): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
     link: from([clientCredentialsLink(clientCredentialsConfig), httpLink(url)]),

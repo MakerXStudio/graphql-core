@@ -28,7 +28,7 @@ export const logGraphQLOperation = ({ started, operationName, query, variables, 
         duration: Date.now() - started,
         errors,
       },
-      isNil
-    )
+      isNil,
+    ),
   )
 }
