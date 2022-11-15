@@ -1,6 +1,6 @@
 {
   "name": "@makerxstudio/graphql-core",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
@@ -29,7 +29,6 @@
     "lodash.pick": "^4.4.0"
   },
   "peerDependencies": {
-    "@apollo/client": "3|4",
     "express": "*",
     "graphql": "*"
   },
