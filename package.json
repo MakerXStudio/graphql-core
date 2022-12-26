@@ -33,7 +33,7 @@
     "graphql": "*"
   },
   "devDependencies": {
-    "@apollo/client": "^3.7.1",
+    "@apollo/client": "^3.7.3",
     "@makerx/eslint-config": "3.0.0",
     "@makerx/prettier-config": "2.0.0",
     "@makerx/ts-config": "1.0.1",
