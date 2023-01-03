@@ -74,7 +74,7 @@ export interface CreateContextConfig<TContext = GraphQLContext> {
   claimsToLog?: string[]
   createUser?: CreateUser
   requestInfoToLog?: Array<keyof RequestInfo>
-  augmentContext?: (context: TContext) => Record<string, unknown>
+  augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
 
 export const createContextFactory = <TContext extends GraphQLContext = GraphQLContext>({
@@ -141,7 +141,9 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
       started: Date.now(),
     }
 
-    const augmentedGraphQLContext = augmentContext ? { ...graphqlContext, ...augmentContext(graphqlContext as TContext) } : graphqlContext
+    const augmentedGraphQLContext = augmentContext
+      ? { ...graphqlContext, ...(await augmentContext(graphqlContext as TContext)) }
+      : graphqlContext
 
     return augmentedGraphQLContext as TContext
   }
