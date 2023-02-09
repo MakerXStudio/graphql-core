@@ -14,7 +14,7 @@ const bearerTokenLink = (accessToken?: string) =>
           authorization: `Bearer ${accessToken}`,
         },
       }
-    return undefined
+    return {}
   })
 
 const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig) => {
