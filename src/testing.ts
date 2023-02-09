@@ -2,18 +2,22 @@ import { ApolloClient, createHttpLink, from, InMemoryCache, NormalizedCacheObjec
 import { setContext } from '@apollo/client/link/context'
 import fetch from 'node-fetch'
 import { AccessTokenResponse, ClientCredentialsConfig, getClientCredentialsToken } from '@makerxstudio/node-common'
+import { ApolloClientOptions } from '@apollo/client/core/ApolloClient'
 
 export * from '@apollo/client/core'
 
 const bearerTokenLink = (accessToken?: string) =>
-  setContext(() => {
+  setContext((_, { headers }) => {
     if (accessToken)
       return {
         headers: {
+          ...headers,
           authorization: `Bearer ${accessToken}`,
         },
       }
-    return undefined
+    return {
+      headers,
+    }
   })
 
 const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig) => {
@@ -39,7 +43,11 @@ const httpLink = (url: string) =>
     fetch: fetch as WindowOrWorkerGlobalScope['fetch'],
   })
 
-export const createTestClient = (url: string, accessToken?: string): ApolloClient<NormalizedCacheObject> =>
+export const createTestClient = (
+  url: string,
+  accessToken?: string,
+  options?: Partial<ApolloClientOptions<NormalizedCacheObject>>,
+): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
     link: from([bearerTokenLink(accessToken), httpLink(url)]),
     cache: new InMemoryCache(),
@@ -48,11 +56,13 @@ export const createTestClient = (url: string, accessToken?: string): ApolloClien
         errorPolicy: 'all',
       },
     },
+    ...options,
   })
 
 export const createTestClientWithClientCredentials = (
   url: string,
   clientCredentialsConfig: ClientCredentialsConfig,
+  options?: Partial<ApolloClientOptions<NormalizedCacheObject>>,
 ): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
     link: from([clientCredentialsLink(clientCredentialsConfig), httpLink(url)]),
@@ -62,4 +72,5 @@ export const createTestClientWithClientCredentials = (
         errorPolicy: 'all',
       },
     },
+    ...options,
   })
