@@ -21,6 +21,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   method: string
   url: string
   origin: string
+  referer?: string
   correlationId?: string
   arrLogId?: string
   clientIp?: string
@@ -96,6 +97,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
       method: req.method ?? '',
       url: req.originalUrl,
       origin: req.get('Origin') ?? '',
+      referer: req.headers.referer?.toString() ?? '',
       arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
       clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
       correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
