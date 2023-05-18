@@ -20,7 +20,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   host: string
   method: string
   url: string
-  referer: string
+  origin: string
   correlationId?: string
   arrLogId?: string
   clientIp?: string
@@ -64,7 +64,6 @@ export interface ContextInput {
   event?: LambdaEvent
 }
 export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => Promise<TContext>
-
 export type CreateRequestLogger = (requestMetadata: Record<string, unknown>) => Logger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
 
@@ -96,9 +95,9 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
       host: req.get('Host') ?? '',
       method: req.method ?? '',
       url: req.originalUrl,
-      referer: req.headers.referer ?? '',
+      origin: req.get('Origin') ?? '',
       arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-      clientIp: req.headers['x-forwarded-for']?.toString() ?? undefined,
+      clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
       correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
     }
 
