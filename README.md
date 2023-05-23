@@ -35,7 +35,7 @@ export const createContext = createContextFactory<GraphQLContext>({
   // set the keys of the user claims (JWT payload) we want added to the request metadata passed to the requestLogger factory
   claimsToLog: ['oid', 'aud', 'tid', 'azp', 'iss', 'scp', 'roles'],
   // set the keys of the request info we want added to the request metadata passed to the requestLogger factory
-  requestInfoToLog: ['referer', 'requestId', 'correlationId'],
+  requestInfoToLog: ['origin', 'requestId', 'correlationId'],
   // use a winston child logger to add metadata to log output
   requestLogger: (requestMetadata) => logger.child(requestMetadata),
   // build the rest of the app context
@@ -81,6 +81,85 @@ const graphqlServer = createServer({
   ...yogaServerConfig,
   context: ({ req }) => createContext({ req, claims: req.user }),
 })
+```
+
+## GraphQL Subscriptions
+
+`createSubscriptionContextFactory` returns a function that creates an equivalent GraphQL context using input supplied to the [graphql-ws Server context callback](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onconnect).
+
+### Example normal plus subscriptions context creation
+
+Refer to [Subscriptions in Apollo Server](https://www.apollographql.com/docs/apollo-server/data/subscriptions/) for comprehensive documentation on subscriptions setup.
+
+```ts
+const augmentContext = (context: GraphQLContext) => {
+  const services = createServices(context)
+  const dataLoaders = createDataLoaders()
+  return { services, dataSource, dataLoaders }
+}
+
+// create a context using request based input
+const createContext = createContextFactory<GraphQLContext>({
+  claimsToLog,
+  requestInfoToLog,
+  requestLogger: (requestMetadata) => logger.child(requestMetadata),
+  createUser: ({ claims, req }) => findUpdateOrCreateUser(claims, req.headers.authorization?.substring(7)),
+  augmentContext,
+})
+
+// create a context using graphql-ws #context callback input
+const createSubscriptionContext = createSubscriptionContextFactory<GraphQLContext>({
+  claimsToLog
+  requestInfoToLog,
+  requestLogger: (requestMetadata) => logger.child(requestMetadata),
+  createUser: ({ claims, connectionParams }) => findUpdateOrCreateUser(claims, extractTokenFromConnectionParams(connectionParams)),
+  augmentContext,
+})
+
+function useSubscriptionsServer(schema: GraphQLSchema, httpServer: Server) {
+  const wsServer = new WebSocketServer({
+    server: httpServer,
+    path: '/graphql',
+  })
+  return useServer(
+    {
+      schema,
+      onError(_ctx, message, errors) {
+        logger.error('GraphQL subscriptions server error', { message, errors })
+      },
+      onConnect: async (ctx) => {
+        // extract auth token from connection params
+        const token = extractTokenFromConnectionParams(ctx.connectionParams)
+        if (!token) return false
+        // verify token, set claims on context.extra for subsequent callbacks to use
+        const claims = await verifyForHost(getHost(ctx.extra.request), token, authConfig)
+        ctx.extra.claims = claims
+        // log and return true to establish connection
+        logger.info('Subscription connection established', {
+          claims: pick(claims, claimsToLog),
+        })
+        return true
+      },
+      onDisconnect({ extra: { claims } }) {
+        logger.info('Subscription connection disconnected', { claims: pick(claims, claimsToLog) })
+      },
+      context: async (ctx) => {
+        return createSubscriptionContext({
+          connectRequest: ctx.extra.request,
+          connectionParams: ctx.connectionParams,
+          claims: ctx.extra.claims,
+        })
+      },
+      onOperation(_ctx, _message, args) {
+        logExecutionArgs(args, 'GraphQL subscription operation')
+      },
+      onNext(_ctx, _message, args, _result) {
+        logExecutionArgs(args, 'GraphQL subscription result')
+      },
+    },
+    wsServer,
+  )
+}
 ```
 
 ## User
