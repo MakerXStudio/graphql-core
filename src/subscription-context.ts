@@ -1,10 +1,9 @@
 import type { Logger } from '@makerxstudio/node-common'
 import { randomUUID } from 'crypto'
 import type { IncomingMessage } from 'http'
-import type { JwtPayload } from 'jsonwebtoken'
 import { pick } from 'lodash'
 import { User } from './User'
-import { CreateRequestLogger, GraphQLContext, RequestInfo } from './context'
+import { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from './context'
 
 export interface SubscriptionContextInput {
   connectRequest: IncomingMessage
