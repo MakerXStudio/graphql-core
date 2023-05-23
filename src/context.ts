@@ -17,6 +17,7 @@ export interface GraphQLContext<
 
 export interface BaseRequestInfo extends Record<string, unknown> {
   requestId: string
+  protocol: 'http' | 'https' | 'ws'
   host: string
   method: string
   url: string
@@ -92,7 +93,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
     // build base request info from the request
     const baseRequestInfo: BaseRequestInfo = {
       requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-      protocol: req.protocol,
+      protocol: req.protocol as 'http' | 'https',
       host: req.get('Host') ?? '',
       method: req.method ?? '',
       url: req.originalUrl,
