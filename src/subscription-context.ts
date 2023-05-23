@@ -84,7 +84,7 @@ export const createSubscriptionContextFactory = <TContext extends GraphQLContext
 
 const defaultCreateUser: CreateSubscriptionUser<User | undefined> = ({ claims, connectionParams }) => {
   if (!claims) return Promise.resolve(undefined)
-  const authParam = connectionParams?.authorization as string | undefined
+  const authParam = (connectionParams?.authorization ?? connectionParams?.Authorization) as string | undefined
   const accessToken = authParam?.startsWith('Bearer') ? authParam.substring(7) : ''
   return Promise.resolve(new User(claims, accessToken))
 }
