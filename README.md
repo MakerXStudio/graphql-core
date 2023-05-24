@@ -83,85 +83,6 @@ const graphqlServer = createServer({
 })
 ```
 
-## GraphQL Subscriptions
-
-`createSubscriptionContextFactory` returns a function that creates an equivalent GraphQL context using input supplied to the [graphql-ws Server context callback](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onconnect).
-
-### Example normal plus subscriptions context creation
-
-Refer to [Subscriptions in Apollo Server](https://www.apollographql.com/docs/apollo-server/data/subscriptions/) for comprehensive documentation on subscriptions setup.
-
-```ts
-const augmentContext = (context: GraphQLContext) => {
-  const services = createServices(context)
-  const dataLoaders = createDataLoaders()
-  return { services, dataSource, dataLoaders }
-}
-
-// create a context using request based input
-const createContext = createContextFactory<GraphQLContext>({
-  claimsToLog,
-  requestInfoToLog,
-  requestLogger: (requestMetadata) => logger.child(requestMetadata),
-  createUser: ({ claims, req }) => findUpdateOrCreateUser(claims, req.headers.authorization?.substring(7)),
-  augmentContext,
-})
-
-// create a context using graphql-ws #context callback input
-const createSubscriptionContext = createSubscriptionContextFactory<GraphQLContext>({
-  claimsToLog
-  requestInfoToLog,
-  requestLogger: (requestMetadata) => logger.child(requestMetadata),
-  createUser: ({ claims, connectionParams }) => findUpdateOrCreateUser(claims, extractTokenFromConnectionParams(connectionParams)),
-  augmentContext,
-})
-
-function useSubscriptionsServer(schema: GraphQLSchema, httpServer: Server) {
-  const wsServer = new WebSocketServer({
-    server: httpServer,
-    path: '/graphql',
-  })
-  return useServer(
-    {
-      schema,
-      onError(_ctx, message, errors) {
-        logger.error('GraphQL subscriptions server error', { message, errors })
-      },
-      onConnect: async (ctx) => {
-        // extract auth token from connection params
-        const token = extractTokenFromConnectionParams(ctx.connectionParams)
-        if (!token) return false
-        // verify token, set claims on context.extra for subsequent callbacks to use
-        const claims = await verifyForHost(getHost(ctx.extra.request), token, authConfig)
-        ctx.extra.claims = claims
-        // log and return true to establish connection
-        logger.info('Subscription connection established', {
-          claims: pick(claims, claimsToLog),
-        })
-        return true
-      },
-      onDisconnect({ extra: { claims } }) {
-        logger.info('Subscription connection disconnected', { claims: pick(claims, claimsToLog) })
-      },
-      context: async (ctx) => {
-        return createSubscriptionContext({
-          connectRequest: ctx.extra.request,
-          connectionParams: ctx.connectionParams,
-          claims: ctx.extra.claims,
-        })
-      },
-      onOperation(_ctx, _message, args) {
-        logExecutionArgs(args, 'GraphQL subscription operation')
-      },
-      onNext(_ctx, _message, args, _result) {
-        logExecutionArgs(args, 'GraphQL subscription result')
-      },
-    },
-    wsServer,
-  )
-}
-```
-
 ## User
 
 By default, if `claims` (decoded token `JwtPayload`) are available, the `GraphQLContext.user` property will be set by constructing a `User` instance.
@@ -218,6 +139,83 @@ This function can be used across implementations, e.g. in a [GraphQL Envelop plu
 The `logGraphQLExecutionArgs` will log `operationName`, `query` and `variables` params from the GraphQL `ExecutionArgs`.
 
 This can be used when logging from execution callbacks, e.g. graphql-ws Server [onOperation](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onoperation) and [onNext](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onnext).
+
+## GraphQL subscriptions
+
+This library includes a `subscriptions` module to provide simple setup using the [GraphQL WS](https://the-guild.dev/graphql/ws) package.
+
+1. Install subscriptions dependencies (optional peer dependencies of this package):
+   ```
+   npm i graphql-ws ws
+   ```
+1. Subscription context setup:
+
+   `createSubscriptionContextFactory` returns a function that creates an equivalent GraphQL context using input supplied to the [graphql-ws Server context callback](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onconnect).
+
+   Example showing both normal context + subscription context creation:
+
+   ```ts
+   const augmentContext = (context: GraphQLContext) => {
+     const services = createServices(context)
+     const dataLoaders = createDataLoaders()
+     return { services, dataSource, dataLoaders }
+   }
+
+   // create a context using request based input
+   const createContext = createContextFactory<GraphQLContext>({
+     claimsToLog,
+     requestInfoToLog,
+     requestLogger: (requestMetadata) => logger.child(requestMetadata),
+     createUser: ({ claims, req }) => findUpdateOrCreateUser(claims, req.headers.authorization?.substring(7)),
+     augmentContext,
+   })
+
+   // create a context using graphql-ws Server#context callback input
+   const createSubscriptionContext = createSubscriptionContextFactory<GraphQLContext>({
+     claimsToLog
+     requestInfoToLog,
+     requestLogger: (requestMetadata) => logger.child(requestMetadata),
+     createUser: ({ claims, connectionParams }) => findUpdateOrCreateUser(claims, extractTokenFromConnectionParams(connectionParams)),
+     augmentContext,
+   })
+   ```
+
+1. Create a subscriptions server, using the ws-server cleanup function in your server lifecycle.
+
+   The `useSubscriptionsServer` function sets up:
+
+   - Token validation as part of establishing the connection (optional)
+   - GraphQL context creation
+   - Logging from the server `onConnect`, `onDisconnect`, `onOperation`, `onNext` and `onError` callbacks
+
+   Example for Apollo Server (`wsServerCleanup` called in the `drainServer` plugin callback):
+
+   ```ts
+    export const startApolloServer = async (app: Express, httpServer: http.Server) => {
+      logger.info('Building schema')
+      const schema = createSchema()
+
+      logger.info('Initialising subscriptions websocket server')
+      const wsServerCleanup = useSubscriptionsServer({
+        schema,
+        httpServer,
+        logger,
+        createSubscriptionContext,
+        jwtClaimsToLog: config.get('logging.userClaimsToLog'),
+        requireAuth: true,
+        verifyToken: (host, token) => verifyForHost(host, token, config.get('auth.bearer')),
+      })
+
+      logger.info('Starting apollo server')
+      const server = new ApolloServer<GraphQLContext>({
+        schema,
+        plugins: plugins(httpServer, wsServerCleanup),
+        introspection: true,
+        csrfPrevention: true,
+      })
+      await server.start()
+
+   ```
 
 ## Testing
 
@@ -302,4 +300,4 @@ This library therefore takes a peer dependency on Express as the standard (commo
 
 The ApolloServer [v4 roadmap](https://github.com/apollographql/apollo-server/blob/main/ROADMAP.md#replace-9-core-maintained-bindings-with-a-stable-http-abstraction) will standardise on the NodeJS http request representation.
 
-This library will swap to the NodeJS http representation in a future version.
+This library will may to the NodeJS http representation in a future version.
