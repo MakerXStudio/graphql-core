@@ -196,7 +196,9 @@ const graphqlServer = createServer({
 
 ## Logging
 
-This library exports a `logGraphQLOperation` function which will log:
+### logGraphQLOperation
+
+The `logGraphQLOperation` function will log:
 
 - `operationName`: the operation name, if supplied
 - `query`: the formatted graphql query or mutation, or 'IntrospectionQuery'
@@ -210,6 +212,12 @@ Notes:
 - introspection queries will not be logged outside of production
 
 This function can be used across implementations, e.g. in a [GraphQL Envelop plugin](https://www.envelop.dev/docs/plugins) or [ApolloServer plugin](https://www.apollographql.com/docs/apollo-server/integrations/plugins/).
+
+### logGraphQLExecutionArgs
+
+The `logGraphQLExecutionArgs` will log `operationName`, `query` and `variables` params from the GraphQL `ExecutionArgs`.
+
+This can be used when logging from execution callbacks, e.g. graphql-ws Server [onOperation](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onoperation) and [onNext](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onnext).
 
 ## Testing
 
