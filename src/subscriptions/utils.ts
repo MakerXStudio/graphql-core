@@ -3,7 +3,7 @@ import type { IncomingMessage } from 'http'
 /**
  * Extracts a token from a connection parameter named `authorization` or `Authorization`.
  * The expected format of the parameter value is: Bearer <token>, consistent with an HTTP Authorization header.
- * Apollo Sandbox sets the `Authorization` connection parameter when you specify an HTTP Authorization header via the UI.
+ * Apollo Sandbox sets an `Authorization` connection parameter when you specify an HTTP Authorization header via the UI.
  * @param connectionParams
  * @returns
  */

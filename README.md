@@ -217,6 +217,8 @@ This library includes a `subscriptions` module to provide simple setup using the
 
    ```
 
+1. For authorisation, clients can include a connection parameter named `authorization` or `Authorization` using the HTTP header format `Bearer <token>`. Note: [Apollo Sandbox](https://studio.apollographql.com/sandbox/explorer) will include an `Authorization` connection parameter when you specify an HTTP `Authorization` header via the UI.
+
 ## Testing
 
 The testing submodule exports utility functions for easily constructing ApolloClient instances for integration testing on NodeJS. The `errorPolicy` is set to `all` so that returned errors can be checked.
