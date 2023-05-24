@@ -184,7 +184,7 @@ This library includes a `subscriptions` module to provide simple setup using the
 
    The `useSubscriptionsServer` function sets up:
 
-   - Token validation as part of establishing the connection (optional)
+   - Auth token validation as part of establishing (or rejecting) the connection (behaviour defined by `verifyToken` and `requireAuth` args)
    - GraphQL context creation
    - Logging from the server `onConnect`, `onDisconnect`, `onOperation`, `onNext` and `onError` callbacks
 
