@@ -9,7 +9,7 @@ import type { IncomingMessage } from 'http'
  */
 export function extractTokenFromConnectionParams(connectionParams?: Readonly<Record<string, unknown>>) {
   const bearerTokenValue = (connectionParams?.authorization ?? connectionParams?.Authorization) as string | undefined
-  if (!bearerTokenValue || !bearerTokenValue.startsWith('Bearer ')) return undefined
+  if (!bearerTokenValue?.startsWith('Bearer ')) return undefined
   return bearerTokenValue.substring(7)
 }
 
