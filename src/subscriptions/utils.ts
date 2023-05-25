@@ -15,5 +15,6 @@ export function extractTokenFromConnectionParams(connectionParams?: Readonly<Rec
 
 export function getHost(request: IncomingMessage) {
   const proxyHostHeader = request.headers['x-forwarded-host']
-  return proxyHostHeader?.[0] ?? proxyHostHeader ?? request.headers.host ?? 'subscriptions'
+  const host = Array.isArray(proxyHostHeader) ? proxyHostHeader[0] ?? undefined : proxyHostHeader ?? request.headers.host ?? undefined
+  return host ?? 'subscriptions'
 }
