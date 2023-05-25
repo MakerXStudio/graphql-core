@@ -302,4 +302,4 @@ This library therefore takes a peer dependency on Express as the standard (commo
 
 The ApolloServer [v4 roadmap](https://github.com/apollographql/apollo-server/blob/main/ROADMAP.md#replace-9-core-maintained-bindings-with-a-stable-http-abstraction) will standardise on the NodeJS http request representation.
 
-This library will may to the NodeJS http representation in a future version.
+This library may swap to the NodeJS http representation in a future version.
