@@ -51,7 +51,7 @@ export function useSubscriptionsServer({
         const token = extractTokenFromConnectionParams(ctx.connectionParams)
         if (!token) {
           if (requireAuth) {
-            logger.error('No authorization paramater was supplied via websocket connection params')
+            logger.error('No authorization parameter was supplied via websocket connection params')
             return false
           }
           logger.info(connectionEstablished)
