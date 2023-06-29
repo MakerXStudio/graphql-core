@@ -1,4 +1,4 @@
-import { Logger } from '@makerxstudio/node-common'
+import { Logger } from '@makerx/node-common'
 import { GraphQLSchema } from 'graphql'
 import { useServer } from 'graphql-ws/lib/use/ws'
 import type { Server } from 'http'

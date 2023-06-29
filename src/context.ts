@@ -1,4 +1,4 @@
-import { Logger } from '@makerxstudio/node-common'
+import { Logger } from '@makerx/node-common'
 import { randomUUID } from 'crypto'
 import type { Request } from 'express'
 import pick from 'lodash.pick'

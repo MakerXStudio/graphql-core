@@ -30,7 +30,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@makerxstudio/node-common": "^0.4.0",
+    "@makerx/node-common": "^1.0.3",
     "lodash.omitby": "^4.6.0",
     "lodash.pick": "^4.4.0"
   },

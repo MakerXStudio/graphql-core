@@ -1,4 +1,4 @@
-import { isLocalDev, Logger } from '@makerxstudio/node-common'
+import { isLocalDev, Logger } from '@makerx/node-common'
 import { ExecutionArgs, GraphQLFormattedError, print } from 'graphql'
 import omitBy from 'lodash.omitby'
 import { isIntrospectionQuery, isNil } from './utils'
