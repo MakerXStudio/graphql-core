@@ -1,21 +1,27 @@
 {
-  "name": "@makerxstudio/graphql-core",
-  "version": "0.7.1",
+  "name": "@makerx/graphql-core",
+  "version": "1.0.0",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
   "license": "MIT",
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
   "engines": {
     "node": ">=16.0"
+  },
+  "bugs": {
+    "url": "https://github.com/MakerXStudio/graphql-core/issues"
+  },
+  "homepage": "https://github.com/MakerXStudio/graphql-core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MakerXStudio/graphql-core.git"
   },
   "scripts": {
     "build": "run-s build:*",
     "build:0-clean": "rimraf dist coverage",
     "build:1-compile": "tsc -p tsconfig.build.json",
     "build:2-copy-pkg-json": "npx --yes @makerx/ts-toolkit@latest copy-package-json",
+    "build:3-copy-readme": "copyfiles README.md dist",
     "test": "jest --coverage --passWithNoTests",
     "lint": "eslint ./src/ --ext .ts",
     "lint:fix": "eslint ./src/ --ext .ts --fix",
@@ -54,6 +60,7 @@
     "@types/lodash.pick": "^4.4.7",
     "@types/node-fetch": "^2.6.4",
     "@types/ws": "^8.5.4",
+    "copyfiles": "^2.4.1",
     "eslint": "8.40.0",
     "express": "^4.18.1",
     "graphql": "^16.6.0",
