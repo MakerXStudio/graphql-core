@@ -79,7 +79,7 @@ export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQ
   requestLogger: CreateRequestLogger | Logger
   augmentRequestInfo?: AugmentRequestInfo
   claimsToLog?: string[]
-  createUser?: CreateUser<InferUserFromContext<TContext>>
+  createUser: CreateUser<InferUserFromContext<TContext>>
   requestInfoToLog?: Array<keyof RequestInfo>
   augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
