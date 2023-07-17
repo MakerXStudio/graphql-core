@@ -15,6 +15,9 @@ export interface GraphQLContext<
   started: number
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyGraphqlContext = GraphQLContext<any, any, any>
+
 export interface BaseRequestInfo extends Record<string, unknown> {
   requestId: string
   protocol: 'http' | 'https' | 'ws'
@@ -57,8 +60,11 @@ export interface JwtPayload {
   iat?: number | undefined
   jti?: string | undefined
 }
-
-export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type InferUserFromContext<TContext extends AnyGraphqlContext> = TContext extends GraphQLContext<any, any, infer TUser>
+  ? TUser
+  : never
+export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
 export interface ContextInput {
   req: Request
   claims?: JwtPayload
@@ -69,20 +75,20 @@ export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => 
 export type CreateRequestLogger = (requestMetadata: Record<string, unknown>) => Logger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
 
-export interface CreateContextConfig<TContext = GraphQLContext> {
+export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQLContext> {
   requestLogger: CreateRequestLogger | Logger
   augmentRequestInfo?: AugmentRequestInfo
   claimsToLog?: string[]
-  createUser?: CreateUser
+  createUser?: CreateUser<InferUserFromContext<TContext>>
   requestInfoToLog?: Array<keyof RequestInfo>
   augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
 
-export const createContextFactory = <TContext extends GraphQLContext = GraphQLContext>({
+export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQLContext>({
   requestLogger,
   augmentRequestInfo,
   claimsToLog,
-  createUser = defaultCreateUser,
+  createUser,
   requestInfoToLog,
   augmentContext,
 }: CreateContextConfig<TContext>): CreateContext<TContext> => {
@@ -151,7 +157,7 @@ export const createContextFactory = <TContext extends GraphQLContext = GraphQLCo
   }
 }
 
-const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
+export const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
   if (!claims) return Promise.resolve(undefined)
   const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
   return Promise.resolve(new User(claims, accessToken))
