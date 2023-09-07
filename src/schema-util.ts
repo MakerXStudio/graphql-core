@@ -7,19 +7,20 @@ import { GraphQLScalarType, GraphQLSchema } from 'graphql'
  * meaning any scalars that are falling back to the default resolver will fail.
  * @param schema A schema object, the result of calling `makeExecutableSchema` from `@graphql-tools/schema`
  */
-export function requireExplicitResolversForScalars(schema: GraphQLSchema) {
+export function requireExplicitResolversForScalars(schema: GraphQLSchema, ...scalarsToIgnore: string[]) {
   const testSymbol = Symbol('testSymbol')
   const scalars = Object.values(schema.getTypeMap()).filter((t): t is GraphQLScalarType => t instanceof GraphQLScalarType)
   for (const scalar of scalars) {
-    if (scalar.name === 'Void') continue
+    if (scalar.name === 'Void' || scalar.name === 'JSON' || scalarsToIgnore.includes(scalar.name)) continue
     try {
       scalar.parseValue(testSymbol)
     } catch {
-      // We expect that a parser should not handle parsing a symbol
+      // We expect that a good parser should throw when parsing a random symbol
       continue
     }
     throw new Error(
-      `Scalar ${scalar.name} does not appear to have an explicit resolver, or is not performing sufficient validation when parsing input`,
+      `Scalar ${scalar.name} does not appear to have an explicit resolver, or is not performing sufficient validation when parsing input. ` +
+        "If you're satisfied with this scalar you can ignore it in the call to `requireExplicitResolversForScalars`.",
     )
   }
 }
