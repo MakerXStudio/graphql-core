@@ -43,6 +43,9 @@
     "ws": "*"
   },
   "peerDependenciesMeta": {
+    "@apollo/client": {
+      "optional": true
+    },
     "graphql-ws": {
       "optional": true
     },
