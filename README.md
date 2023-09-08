@@ -223,6 +223,16 @@ This library includes a `subscriptions` module to provide simple setup using the
 
 The testing submodule exports utility functions for easily constructing ApolloClient instances for integration testing on NodeJS. The `errorPolicy` is set to `all` so that returned errors can be checked.
 
+### Setup
+
+If you use this module, you need to install `@apollo/client`:
+
+```
+npm install --save-dev @apollo/client
+```
+
+### Usage
+
 - `createTestClient` accepts a url and optional accessToken.
 - `createTestClientWithClientCredentials` accepts a url and client credentials config and will fetch and attach an access token to each request.
 
