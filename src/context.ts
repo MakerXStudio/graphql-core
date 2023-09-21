@@ -100,7 +100,7 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
     const baseRequestInfo: BaseRequestInfo = {
       requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
       protocol: req.protocol as 'http' | 'https',
-      host: req.get('Host') ?? '',
+      host: req.hostname ?? '',
       method: req.method ?? '',
       url: req.originalUrl,
       origin: req.get('Origin') ?? '',
