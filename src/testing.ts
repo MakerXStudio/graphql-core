@@ -40,7 +40,6 @@ const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig)
 const httpLink = (url: string) =>
   createHttpLink({
     uri: url,
-    fetch: fetch as WindowOrWorkerGlobalScope['fetch'],
   })
 
 export const createTestClient = (
