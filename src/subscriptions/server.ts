@@ -74,7 +74,13 @@ export function useSubscriptionsServer({
       onSubscribe: async (ctx) => {
         if (!verifyToken) return
         const token = extractTokenFromConnectionParams(ctx.connectionParams)
-        if (!token) return
+        if (!token) {
+          if (requireAuth) {
+            logger.error('No authorization parameter was supplied via websocket connection params')
+            ctx.extra.socket.close(CloseCode.Forbidden, 'Forbidden')
+          }
+          return
+        }
         try {
           await verifyToken(getHost(ctx.extra.request), token)
         } catch (error) {
