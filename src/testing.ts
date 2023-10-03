@@ -1,6 +1,5 @@
 import { ApolloClient, createHttpLink, from, InMemoryCache, NormalizedCacheObject } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
-import fetch from 'node-fetch'
 import { AccessTokenResponse, ClientCredentialsConfig, getClientCredentialsToken } from '@makerx/node-common'
 import { ApolloClientOptions } from '@apollo/client/core/ApolloClient'
 
