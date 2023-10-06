@@ -8,6 +8,7 @@ import { JwtPayload } from '../context'
 import { logGraphQLExecutionArgs } from '../logging'
 import { CreateSubscriptionContext } from './context'
 import { extractTokenFromConnectionParams, getHost } from './utils'
+import { CloseCode } from 'graphql-ws'
 
 export function useSubscriptionsServer({
   schema,
@@ -68,6 +69,23 @@ export function useSubscriptionsServer({
         } catch (error) {
           logger.error('Failed to verify subscription connection auth token', { error })
           return false
+        }
+      },
+      onSubscribe: async (ctx) => {
+        if (!verifyToken) return
+        const token = extractTokenFromConnectionParams(ctx.connectionParams)
+        if (!token) {
+          if (requireAuth) {
+            logger.error('No authorization parameter was supplied via websocket connection params')
+            ctx.extra.socket.close(CloseCode.Forbidden, 'Forbidden')
+          }
+          return
+        }
+        try {
+          await verifyToken(getHost(ctx.extra.request), token)
+        } catch (error) {
+          logger.warn('Subscription connection auth token is no longer valid', { claims: pick(ctx.extra.claims, jwtClaimsToLog), error })
+          ctx.extra.socket.close(CloseCode.Forbidden, 'Forbidden')
         }
       },
       onDisconnect({ extra: { claims } }) {
