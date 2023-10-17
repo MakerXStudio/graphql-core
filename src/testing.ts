@@ -36,18 +36,20 @@ const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig)
   })
 }
 
-const httpLink = (url: string) =>
+const httpLink = (url: string, fetch: WindowOrWorkerGlobalScope['fetch']) =>
   createHttpLink({
     uri: url,
+    fetch,
   })
 
 export const createTestClient = (
+  fetch: WindowOrWorkerGlobalScope['fetch'],
   url: string,
   accessToken?: string,
   options?: Partial<ApolloClientOptions<NormalizedCacheObject>>,
 ): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
-    link: from([bearerTokenLink(accessToken), httpLink(url)]),
+    link: from([bearerTokenLink(accessToken), httpLink(url, fetch)]),
     cache: new InMemoryCache(),
     defaultOptions: {
       query: {
@@ -58,12 +60,13 @@ export const createTestClient = (
   })
 
 export const createTestClientWithClientCredentials = (
+  fetch: WindowOrWorkerGlobalScope['fetch'],
   url: string,
   clientCredentialsConfig: ClientCredentialsConfig,
   options?: Partial<ApolloClientOptions<NormalizedCacheObject>>,
 ): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
-    link: from([clientCredentialsLink(clientCredentialsConfig), httpLink(url)]),
+    link: from([clientCredentialsLink(clientCredentialsConfig), httpLink(url, fetch)]),
     cache: new InMemoryCache(),
     defaultOptions: {
       query: {
