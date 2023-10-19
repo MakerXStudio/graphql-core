@@ -134,12 +134,6 @@ Notes:
 
 This function can be used across implementations, e.g. in a [GraphQL Envelop plugin](https://www.envelop.dev/docs/plugins) or [ApolloServer plugin](https://www.apollographql.com/docs/apollo-server/integrations/plugins/).
 
-### logGraphQLExecutionArgs
-
-The `logGraphQLExecutionArgs` will log `operationName`, `query` and `variables` params from the GraphQL `ExecutionArgs`.
-
-This can be used when logging from execution callbacks, e.g. graphql-ws Server [onOperation](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onoperation) and [onNext](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onnext).
-
 ## GraphQL subscriptions
 
 This library includes a `subscriptions` module to provide simple setup using the [GraphQL WS](https://the-guild.dev/graphql/ws) package.
