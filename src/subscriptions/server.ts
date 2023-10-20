@@ -1,20 +1,21 @@
 import { Logger } from '@makerx/node-common'
 import { GraphQLSchema } from 'graphql'
+import { CloseCode } from 'graphql-ws'
 import { useServer } from 'graphql-ws/lib/use/ws'
 import type { Server } from 'http'
 import pick from 'lodash.pick'
 import { WebSocketServer } from 'ws'
 import { JwtPayload } from '../context'
-import { logGraphQLExecutionArgs } from '../logging'
+import { logSubscriptionOperation } from '../logging'
 import { CreateSubscriptionContext } from './context'
 import { extractTokenFromConnectionParams, getHost } from './utils'
-import { CloseCode } from 'graphql-ws'
 
-export function useSubscriptionsServer({
+export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   schema,
   httpServer,
   createSubscriptionContext,
   logger,
+  operationLogLevel = 'info',
   path = '/graphql',
   verifyToken,
   requireAuth,
@@ -23,7 +24,8 @@ export function useSubscriptionsServer({
   schema: GraphQLSchema
   httpServer: Server
   createSubscriptionContext: CreateSubscriptionContext
-  logger: Logger
+  logger: TLogger
+  operationLogLevel?: keyof TLogger
   path?: string
   verifyToken?: (host: string, token: string) => Promise<JwtPayload>
   requireAuth?: boolean
@@ -99,10 +101,10 @@ export function useSubscriptionsServer({
         })
       },
       onOperation(_ctx, _message, args) {
-        logGraphQLExecutionArgs(args, 'GraphQL subscription operation')
+        logSubscriptionOperation({ args, logLevel: operationLogLevel })
       },
-      onNext(_ctx, _message, args, _result) {
-        logGraphQLExecutionArgs(args, 'GraphQL subscription result')
+      onNext(_ctx, _message, args, { data, ...result }) {
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, result })
       },
     },
     wsServer,

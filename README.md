@@ -119,26 +119,11 @@ const graphqlServer = createServer({
 
 ### logGraphQLOperation
 
-The `logGraphQLOperation` function will log:
+Logs a GraphQL operation in a consistent format with the option of including any additional data. Top level and result level log data with null or undefined values will be omitted for berevity.
 
-- `operationName`: the operation name, if supplied
-- `query`: the formatted graphql query or mutation, or 'IntrospectionQuery'
-- `variables`: the graphql request variables
-- `duration`: the duration of request processing
-- `errors`: the graphql response errors, if any
+Refer to the `GraphQLLogOperationInfo` type for the definition of input.
 
-Notes:
-
-- null or undefined values will be omitted
-- introspection queries will not be logged outside of production
-
-This function can be used across implementations, e.g. in a [GraphQL Envelop plugin](https://www.envelop.dev/docs/plugins) or [ApolloServer plugin](https://www.apollographql.com/docs/apollo-server/integrations/plugins/).
-
-### logGraphQLExecutionArgs
-
-The `logGraphQLExecutionArgs` will log `operationName`, `query` and `variables` params from the GraphQL `ExecutionArgs`.
-
-This can be used when logging from execution callbacks, e.g. graphql-ws Server [onOperation](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onoperation) and [onNext](https://the-guild.dev/graphql/ws/docs/interfaces/server.ServerOptions#onnext).
+This function can be used across implementations, e.g. in a [GraphQL Envelop plugin](https://www.envelop.dev/docs/plugins) or [ApolloServer plugin](https://github.com/MakerXStudio/graphql-apollo-server/blob/main/src/plugins/graphql-operation-logging-plugin.ts).
 
 ## GraphQL subscriptions
 
