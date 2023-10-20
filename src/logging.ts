@@ -5,8 +5,9 @@ import omitBy from 'lodash.omitby'
 import { GraphQLContext } from './context'
 import { isIntrospectionQuery, isNil } from './utils'
 
+type LogFunction = Logger['info']
 export type LoggerLogFunctions<T extends Logger> = {
-  [Property in keyof T]: (message: string, ...optionalParams: unknown[]) => void
+  [Property in keyof T]: LogFunction
 }
 
 /**
