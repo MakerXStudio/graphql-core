@@ -4,6 +4,7 @@
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
+  "license": "MIT",
   "type": "module",
   "module": "index.mjs",
   "types": "index.d.ts",
