@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import type { IncomingMessage } from 'http'
 import { pick } from 'lodash'
 import { User } from '../User'
-import { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
+import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
 import { extractTokenFromConnectionParams } from './utils'
 
 export interface SubscriptionContextInput {

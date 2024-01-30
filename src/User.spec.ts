@@ -1,4 +1,4 @@
-import { JwtPayload } from './context'
+import type { JwtPayload } from './context'
 import { User } from './User'
 
 describe('User', () => {

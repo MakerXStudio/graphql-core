@@ -1,7 +1,9 @@
-import { ApolloClient, createHttpLink, from, InMemoryCache, NormalizedCacheObject } from '@apollo/client/core'
+import type { NormalizedCacheObject } from '@apollo/client/core'
+import { ApolloClient, createHttpLink, from, InMemoryCache } from '@apollo/client/core'
+import type { ApolloClientOptions } from '@apollo/client/core/ApolloClient'
 import { setContext } from '@apollo/client/link/context'
-import { AccessTokenResponse, ClientCredentialsConfig, getClientCredentialsToken } from '@makerx/node-common'
-import { ApolloClientOptions } from '@apollo/client/core/ApolloClient'
+import type { AccessTokenResponse, ClientCredentialsConfig } from '@makerx/node-common'
+import { getClientCredentialsToken } from '@makerx/node-common'
 
 export * from '@apollo/client/core'
 
@@ -36,20 +38,18 @@ const clientCredentialsLink = (clientCredentialsConfig: ClientCredentialsConfig)
   })
 }
 
-const httpLink = (url: string, fetch: WindowOrWorkerGlobalScope['fetch']) =>
+const httpLink = (url: string) =>
   createHttpLink({
     uri: url,
-    fetch,
   })
 
 export const createTestClient = (
-  fetch: WindowOrWorkerGlobalScope['fetch'],
   url: string,
   accessToken?: string,
   options?: Partial<ApolloClientOptions<NormalizedCacheObject>>,
 ): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
-    link: from([bearerTokenLink(accessToken), httpLink(url, fetch)]),
+    link: from([bearerTokenLink(accessToken), httpLink(url)]),
     cache: new InMemoryCache(),
     defaultOptions: {
       query: {
@@ -60,13 +60,12 @@ export const createTestClient = (
   })
 
 export const createTestClientWithClientCredentials = (
-  fetch: WindowOrWorkerGlobalScope['fetch'],
   url: string,
   clientCredentialsConfig: ClientCredentialsConfig,
   options?: Partial<ApolloClientOptions<NormalizedCacheObject>>,
 ): ApolloClient<NormalizedCacheObject> =>
   new ApolloClient({
-    link: from([clientCredentialsLink(clientCredentialsConfig), httpLink(url, fetch)]),
+    link: from([clientCredentialsLink(clientCredentialsConfig), httpLink(url)]),
     cache: new InMemoryCache(),
     defaultOptions: {
       query: {
