@@ -10,7 +10,7 @@
     "declaration": true,
     "importHelpers": true,
     "isolatedModules": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
   },
-  "include": ["src/**/*.ts", "rollup.config.ts", ".eslintrc.cjs"]
+  "include": ["src/**/*.ts", "jest.config.ts", "rollup.config.ts", ".eslintrc.cjs"],
 }
