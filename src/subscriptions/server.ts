@@ -1,13 +1,13 @@
-import { Logger } from '@makerx/node-common'
-import { GraphQLSchema } from 'graphql'
+import type { Logger } from '@makerx/node-common'
+import type { GraphQLSchema } from 'graphql'
 import { CloseCode } from 'graphql-ws'
 import { useServer } from 'graphql-ws/lib/use/ws'
 import type { Server } from 'http'
-import pick from 'lodash.pick'
+import { pick } from 'lodash'
 import { WebSocketServer } from 'ws'
-import { JwtPayload } from '../context'
+import type { JwtPayload } from '../context'
 import { logSubscriptionOperation } from '../logging'
-import { CreateSubscriptionContext } from './context'
+import type { CreateSubscriptionContext } from './context'
 import { extractTokenFromConnectionParams, getHost } from './utils'
 
 export function useSubscriptionsServer<TLogger extends Logger = Logger>({

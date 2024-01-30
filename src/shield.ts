@@ -1,6 +1,7 @@
-import { IRules, ShieldRule } from 'graphql-shield/typings/types'
-import { Primitive } from './models'
-import { allow, and, chain, or, race, rule, shield } from 'graphql-shield'
+import type { and, chain, or, race } from 'graphql-shield'
+import { allow, rule, shield } from 'graphql-shield'
+import type { IRules, ShieldRule } from 'graphql-shield/typings/types'
+import type { Primitive } from './models'
 
 type RuleCombinator = typeof chain | typeof race | typeof or | typeof and
 

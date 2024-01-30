@@ -1,8 +1,10 @@
-import { isLocalDev, Logger } from '@makerx/node-common'
-import { ExecutionArgs, GraphQLFormattedError, OperationTypeNode, print } from 'graphql'
-import { ExecutionResult } from 'graphql-ws'
-import omitBy from 'lodash.omitby'
-import { GraphQLContext } from './context'
+import type { Logger } from '@makerx/node-common'
+import { isLocalDev } from '@makerx/node-common'
+import type { ExecutionArgs, GraphQLFormattedError } from 'graphql'
+import { OperationTypeNode, print } from 'graphql'
+import type { ExecutionResult } from 'graphql-ws'
+import { omitBy } from 'lodash'
+import type { GraphQLContext } from './context'
 import { isIntrospectionQuery, isNil } from './utils'
 
 type LogFunction = Logger['info']

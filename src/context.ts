@@ -1,7 +1,7 @@
-import { Logger } from '@makerx/node-common'
+import type { Logger } from '@makerx/node-common'
 import { randomUUID } from 'crypto'
 import type { Request } from 'express'
-import pick from 'lodash.pick'
+import { pick } from 'lodash'
 import { User } from './User'
 
 export interface GraphQLContext<
@@ -61,9 +61,8 @@ export interface JwtPayload {
   jti?: string | undefined
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type InferUserFromContext<TContext extends AnyGraphqlContext> = TContext extends GraphQLContext<any, any, infer TUser>
-  ? TUser
-  : never
+export type InferUserFromContext<TContext extends AnyGraphqlContext> =
+  TContext extends GraphQLContext<any, any, infer TUser> ? TUser : never
 export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
 export interface ContextInput {
   req: Request

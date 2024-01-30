@@ -1,4 +1,5 @@
-import { GraphQLScalarType, GraphQLSchema } from 'graphql'
+import type { GraphQLSchema } from 'graphql'
+import { GraphQLScalarType } from 'graphql'
 
 /**
  * It is possible to register a custom scalar with apollo server without defining an explicit resolver (a default resolver is used in
