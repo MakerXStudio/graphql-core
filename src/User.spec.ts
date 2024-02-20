@@ -1,5 +1,6 @@
 import type { JwtPayload } from './context'
 import { User } from './User'
+import { describe, it, expect } from 'vitest'
 
 describe('User', () => {
   it('can understand AzAD B2C claims', () => {
