@@ -1,14 +1,16 @@
 import type { and, chain, or, race } from 'graphql-shield'
 import { allow, rule, shield } from 'graphql-shield'
-import type { IRules, ShieldRule } from 'graphql-shield/typings/types'
+import type { IRules } from 'graphql-shield'
 import type { Primitive } from './models'
 
 type RuleCombinator = typeof chain | typeof race | typeof or | typeof and
-
+// For whatever reason, graphql-shield doesn't export this type, but we can extract if from
+// what it does export.
+export type ShieldRule = ReturnType<(typeof allow)['getRules']>[number]
 export const createRule = <TContext, TParent = unknown, TArgs = unknown>(
   logic: (parent: TParent, args: TArgs, ctx: TContext) => boolean | Promise<boolean> | Error,
   cache: 'contextual' | 'strict' = 'strict',
-) => rule({ cache })(async (parent, args, ctx) => logic(parent, args, ctx))
+): ShieldRule => rule({ cache })(async (parent, args, ctx) => logic(parent, args, ctx))
 
 /**
  * Combines a given rule with all existing defined rules using the provided combinator

@@ -6,7 +6,3 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
-    ignore:
-      - dependency-name: 'node-fetch'
-        # node-fetch v3.* is esm-only
-        versions: ['3.x']
