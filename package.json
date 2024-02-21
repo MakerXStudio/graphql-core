@@ -1,6 +1,6 @@
 {
   "name": "@makerx/graphql-core",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
