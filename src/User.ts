@@ -1,13 +1,19 @@
 import type { JwtPayload } from './context'
 import { isNotNil } from './utils'
+import { UserBase, UserType } from './user-base'
 
-export class User {
+export class User extends UserBase {
   public readonly token: string
   public readonly claims: JwtPayload
 
   constructor(claims: JwtPayload, accessToken: string) {
+    super()
     this.claims = claims
     this.token = accessToken
+  }
+
+  get userType(): UserType {
+    return 'interactive'
   }
 
   get email(): string | undefined {

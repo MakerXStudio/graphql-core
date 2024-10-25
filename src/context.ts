@@ -3,11 +3,13 @@ import { randomUUID } from 'crypto'
 import type { Request } from 'express'
 import { pick } from 'lodash'
 import { User } from './User'
+import { UserBase } from './user-base'
+import { ServiceUser } from './service-user'
 
 export interface GraphQLContext<
   TLogger extends Logger = Logger,
   TRequestInfo extends BaseRequestInfo = RequestInfo,
-  TUser = User | undefined,
+  TUser = UserBase | undefined,
 > {
   logger: TLogger
   requestInfo: TRequestInfo
@@ -63,7 +65,7 @@ export interface JwtPayload {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type InferUserFromContext<TContext extends AnyGraphqlContext> =
   TContext extends GraphQLContext<any, any, infer TUser> ? TUser : never
-export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
+export type CreateUser<T = UserBase | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
 export interface ContextInput {
   req: Request
   claims?: JwtPayload
@@ -160,4 +162,14 @@ export const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims })
   if (!claims) return Promise.resolve(undefined)
   const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
   return Promise.resolve(new User(claims, accessToken))
+}
+
+export const defaultCheckServiceUser = (req: Request, checker: (apiKey: string) => string | undefined): ServiceUser | undefined => {
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('ApiKey ')) {
+    return undefined
+  }
+  const apiKey = authHeader.split(' ')[1]!
+  const serviceUserName = checker(apiKey)
+  return serviceUserName ? new ServiceUser(serviceUserName) : undefined
 }
