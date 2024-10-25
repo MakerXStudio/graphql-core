@@ -1,2 +1,7 @@
 {
+  "1099764": {
+    "active": true,
+    "expiry": "2024-12-31",
+    "notes": "DOM Clobbering Gadget"
+  }
 }
