@@ -4,15 +4,16 @@ import type { Request } from 'express'
 import { pick } from 'lodash'
 import { User } from './User'
 import { UserBase } from './user-base'
+import { ServiceUser } from './service-user'
 
 export interface GraphQLContext<
   TLogger extends Logger = Logger,
   TRequestInfo extends BaseRequestInfo = RequestInfo,
-  TUser extends UserBase = UserBase,
+  TUser = UserBase | undefined,
 > {
   logger: TLogger
   requestInfo: TRequestInfo
-  user?: TUser
+  user: TUser
   started: number
 }
 
@@ -161,4 +162,14 @@ export const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims })
   if (!claims) return Promise.resolve(undefined)
   const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
   return Promise.resolve(new User(claims, accessToken))
+}
+
+export const defaultCheckServiceUser = (req: Request, checker: (apiKey: string) => string | undefined): ServiceUser | undefined => {
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('ApiKey ')) {
+    return undefined
+  }
+  const apiKey = authHeader.split(' ')[1]!
+  const serviceUserName = checker(apiKey)
+  return serviceUserName ? new ServiceUser(serviceUserName) : undefined
 }
