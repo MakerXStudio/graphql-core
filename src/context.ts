@@ -3,11 +3,12 @@ import { randomUUID } from 'crypto'
 import type { Request } from 'express'
 import { pick } from 'lodash'
 import { User } from './User'
+import { UserBase } from './user-base'
 
 export interface GraphQLContext<
   TLogger extends Logger = Logger,
   TRequestInfo extends BaseRequestInfo = RequestInfo,
-  TUser = User | undefined,
+  TUser = UserBase | undefined,
 > {
   logger: TLogger
   requestInfo: TRequestInfo
@@ -29,7 +30,6 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   correlationId?: string
   arrLogId?: string
   clientIp?: string
-  authHeader?: string
 }
 
 export interface LambdaContext {
@@ -108,7 +108,6 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
       arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
       clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
       correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
-      authHeader: req.headers['Authorization']?.toString() ?? undefined,
     }
 
     // add lambda info from the context, if present
