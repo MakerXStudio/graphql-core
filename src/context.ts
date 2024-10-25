@@ -29,6 +29,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   correlationId?: string
   arrLogId?: string
   clientIp?: string
+  authHeader?: string
 }
 
 export interface LambdaContext {
@@ -107,6 +108,7 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
       arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
       clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
       correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
+      authHeader: req.headers['Authorization']?.toString() ?? undefined,
     }
 
     // add lambda info from the context, if present
