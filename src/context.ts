@@ -8,11 +8,11 @@ import { UserBase } from './user-base'
 export interface GraphQLContext<
   TLogger extends Logger = Logger,
   TRequestInfo extends BaseRequestInfo = RequestInfo,
-  TUser = UserBase | undefined,
+  TUser extends UserBase = UserBase,
 > {
   logger: TLogger
   requestInfo: TRequestInfo
-  user: TUser
+  user?: TUser
   started: number
 }
 
@@ -64,7 +64,7 @@ export interface JwtPayload {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type InferUserFromContext<TContext extends AnyGraphqlContext> =
   TContext extends GraphQLContext<any, any, infer TUser> ? TUser : never
-export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
+export type CreateUser<T = UserBase | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
 export interface ContextInput {
   req: Request
   claims?: JwtPayload
