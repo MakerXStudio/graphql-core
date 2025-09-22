@@ -157,6 +157,6 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
 
 export const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
   if (!claims) return Promise.resolve(undefined)
-  const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
+  const accessToken = req.headers.authorization?.startsWith('Bearer') ? (req.headers.authorization?.substring(7) ?? '') : ''
   return Promise.resolve(new User(claims, accessToken))
 }
