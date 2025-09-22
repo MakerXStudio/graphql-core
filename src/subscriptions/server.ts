@@ -5,7 +5,7 @@ import { useServer } from 'graphql-ws/lib/use/ws'
 import type { Server } from 'http'
 import { pick } from 'lodash'
 import { WebSocketServer } from 'ws'
-import type { JwtPayload } from '../context'
+import type { GraphQLContext, JwtPayload } from '../context'
 import { logSubscriptionOperation } from '../logging'
 import type { CreateSubscriptionContext } from './context'
 import { extractTokenFromConnectionParams, getHost } from './utils'
@@ -20,6 +20,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   verifyToken,
   requireAuth,
   jwtClaimsToLog = ['oid', 'iss'],
+  resolveCustomOperationLogger,
 }: {
   schema: GraphQLSchema
   httpServer: Server
@@ -30,6 +31,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   verifyToken?: (host: string, token: string) => Promise<JwtPayload>
   requireAuth?: boolean
   jwtClaimsToLog?: string[]
+  resolveCustomOperationLogger?: (context: GraphQLContext) => TLogger
 }) {
   if (requireAuth && !verifyToken) throw new Error('verifyToken must be supplied when requireAuth is true')
 
@@ -101,10 +103,10 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
         })
       },
       onOperation(_ctx, _message, args) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel })
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, resolveCustomLogger: resolveCustomOperationLogger })
       },
       onNext(_ctx, _message, args, { data, ...result }) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, result })
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, result, resolveCustomLogger: resolveCustomOperationLogger })
       },
     },
     wsServer,
