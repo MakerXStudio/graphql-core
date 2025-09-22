@@ -28,6 +28,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   correlationId?: string
   arrLogId?: string
   clientIp?: string
+  userAgent?: string
 }
 
 export interface LambdaContext {
@@ -82,6 +83,20 @@ export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQ
   augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
 
+export const buildBasicRequestInfo = (req: Request): BaseRequestInfo => ({
+  requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
+  protocol: req.protocol as 'http' | 'https',
+  host: req.hostname ?? '',
+  method: req.method ?? '',
+  url: req.originalUrl,
+  origin: req.get('Origin') ?? '',
+  referer: req.headers.referer?.toString() ?? '',
+  arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
+  clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
+  correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
+  userAgent: req.headers['user-agent']?.toString() ?? undefined,
+})
+
 export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQLContext>({
   requestLogger,
   augmentRequestInfo,
@@ -95,18 +110,7 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
     const { req, claims, context } = input
 
     // build base request info from the request
-    const baseRequestInfo: BaseRequestInfo = {
-      requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-      protocol: req.protocol as 'http' | 'https',
-      host: req.hostname ?? '',
-      method: req.method ?? '',
-      url: req.originalUrl,
-      origin: req.get('Origin') ?? '',
-      referer: req.headers.referer?.toString() ?? '',
-      arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-      clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
-      correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
-    }
+    const baseRequestInfo: BaseRequestInfo = buildBasicRequestInfo(req)
 
     // add lambda info from the context, if present
     let lambdaRequestInfo: LambdaRequestInfo | undefined
