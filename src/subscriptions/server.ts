@@ -20,7 +20,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   verifyToken,
   requireAuth,
   jwtClaimsToLog = ['oid', 'iss'],
-  resolveOperationLogger: resolveCustomOperationLogger,
+  resolveOperationLogger,
 }: {
   schema: GraphQLSchema
   httpServer: Server
@@ -103,10 +103,10 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
         })
       },
       onOperation(_ctx, _message, args) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, resolveLogger: resolveCustomOperationLogger })
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, resolveLogger: resolveOperationLogger })
       },
       onNext(_ctx, _message, args, { data, ...result }) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, result, resolveLogger: resolveCustomOperationLogger })
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, result, resolveLogger: resolveOperationLogger })
       },
     },
     wsServer,
