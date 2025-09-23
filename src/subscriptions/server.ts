@@ -20,7 +20,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   verifyToken,
   requireAuth,
   jwtClaimsToLog = ['oid', 'iss'],
-  resolveCustomOperationLogger,
+  resolveOperationLogger: resolveCustomOperationLogger,
 }: {
   schema: GraphQLSchema
   httpServer: Server
@@ -31,7 +31,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   verifyToken?: (host: string, token: string) => Promise<JwtPayload>
   requireAuth?: boolean
   jwtClaimsToLog?: string[]
-  resolveCustomOperationLogger?: (context: GraphQLContext) => TLogger
+  resolveOperationLogger?: (context: GraphQLContext) => TLogger
 }) {
   if (requireAuth && !verifyToken) throw new Error('verifyToken must be supplied when requireAuth is true')
 
@@ -103,10 +103,10 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
         })
       },
       onOperation(_ctx, _message, args) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, resolveCustomLogger: resolveCustomOperationLogger })
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, resolveLogger: resolveCustomOperationLogger })
       },
       onNext(_ctx, _message, args, { data, ...result }) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, result, resolveCustomLogger: resolveCustomOperationLogger })
+        logSubscriptionOperation({ args, logLevel: operationLogLevel, result, resolveLogger: resolveCustomOperationLogger })
       },
     },
     wsServer,
