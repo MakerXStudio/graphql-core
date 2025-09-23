@@ -83,7 +83,7 @@ export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQ
   augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
 
-export const buildBasicRequestInfo = (req: Request): BaseRequestInfo => ({
+export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
   requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
   protocol: req.protocol as 'http' | 'https',
   host: req.hostname ?? '',
@@ -110,7 +110,7 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
     const { req, claims, context } = input
 
     // build base request info from the request
-    const baseRequestInfo: BaseRequestInfo = buildBasicRequestInfo(req)
+    const baseRequestInfo: BaseRequestInfo = buildBaseRequestInfo(req)
 
     // add lambda info from the context, if present
     let lambdaRequestInfo: LambdaRequestInfo | undefined
