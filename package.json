@@ -7,7 +7,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22.0"
+    "node": ">=20.0"
   },
   "bugs": {
     "url": "https://github.com/MakerXStudio/graphql-core/issues"
@@ -86,8 +86,8 @@
     "typescript": "^5.9.2",
     "ws": "^8.18.3",
     "prettier": "3.6.2",
-    "@tsconfig/node22": "^22.0.2",
-    "@types/node": "^22.18.6",
+    "@types/node": "20.19.17",
+    "@tsconfig/node20": "^20.1.6",
     "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-commonjs": "28.0.6",
     "tsx": "4.20.5",
