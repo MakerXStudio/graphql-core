@@ -15,7 +15,6 @@ export interface GraphQLContext<
   started: number
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyGraphqlContext = GraphQLContext<any, any, any>
 
 export interface BaseRequestInfo extends Record<string, unknown> {
@@ -29,6 +28,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   correlationId?: string
   arrLogId?: string
   clientIp?: string
+  userAgent?: string
 }
 
 export interface LambdaContext {
@@ -60,7 +60,7 @@ export interface JwtPayload {
   iat?: number | undefined
   jti?: string | undefined
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export type InferUserFromContext<TContext extends AnyGraphqlContext> =
   TContext extends GraphQLContext<any, any, infer TUser> ? TUser : never
 export type CreateUser<T = User | undefined> = (input: Omit<ContextInput, 'createUser'>) => Promise<T> | T
@@ -83,6 +83,20 @@ export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQ
   augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
 
+export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
+  requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
+  protocol: req.protocol as 'http' | 'https',
+  host: req.hostname ?? '',
+  method: req.method ?? '',
+  url: req.originalUrl,
+  origin: req.get('Origin') ?? '',
+  referer: req.headers.referer?.toString() ?? '',
+  arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
+  clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
+  correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
+  userAgent: req.headers['user-agent']?.toString() ?? undefined,
+})
+
 export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQLContext>({
   requestLogger,
   augmentRequestInfo,
@@ -96,18 +110,7 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
     const { req, claims, context } = input
 
     // build base request info from the request
-    const baseRequestInfo: BaseRequestInfo = {
-      requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-      protocol: req.protocol as 'http' | 'https',
-      host: req.hostname ?? '',
-      method: req.method ?? '',
-      url: req.originalUrl,
-      origin: req.get('Origin') ?? '',
-      referer: req.headers.referer?.toString() ?? '',
-      arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-      clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
-      correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
-    }
+    const baseRequestInfo: BaseRequestInfo = buildBaseRequestInfo(req)
 
     // add lambda info from the context, if present
     let lambdaRequestInfo: LambdaRequestInfo | undefined
@@ -158,6 +161,6 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
 
 export const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
   if (!claims) return Promise.resolve(undefined)
-  const accessToken = req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization?.substring(7) ?? '' : ''
+  const accessToken = req.headers.authorization?.startsWith('Bearer') ? (req.headers.authorization?.substring(7) ?? '') : ''
   return Promise.resolve(new User(claims, accessToken))
 }

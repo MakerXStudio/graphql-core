@@ -113,13 +113,17 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
   result,
   message,
   logLevel,
+  resolveLogger,
 }: {
   args: ExecutionArgs
   result?: ExecutionResult
   message?: string
   logLevel?: keyof LoggerLogFunctions<TLogger>
+  resolveLogger?: (context: GraphQLContext) => TLogger
 }) => {
-  const logger = (args.contextValue as GraphQLContext).logger as TLogger
+  const logger = resolveLogger
+    ? resolveLogger(args.contextValue as GraphQLContext)
+    : ((args.contextValue as GraphQLContext).logger as TLogger)
   if (!logger) return
 
   const { operationName, variableValues, document } = args

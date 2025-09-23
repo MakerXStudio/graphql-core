@@ -38,7 +38,7 @@ export const createSubscriptionContextFactory = <TContext extends GraphQLContext
     const { connectRequest: req, claims } = input
 
     const xForwardedFor = req.headers['x-forwarded-for']
-    const host = Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor ?? req.headers.host
+    const host = Array.isArray(xForwardedFor) ? xForwardedFor[0] : (xForwardedFor ?? req.headers.host)
 
     // build request info from the connect request and socket
     const requestInfo: RequestInfo = {
