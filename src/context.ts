@@ -1,7 +1,7 @@
 import type { Logger } from '@makerx/node-common'
 import { randomUUID } from 'crypto'
 import type { Request } from 'express'
-import { pick } from 'lodash'
+import { pick } from 'es-toolkit/compat'
 import { User } from './User'
 
 export interface GraphQLContext<

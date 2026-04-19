@@ -3,7 +3,7 @@ import { isLocalDev } from '@makerx/node-common'
 import type { ExecutionArgs, GraphQLFormattedError } from 'graphql'
 import { OperationTypeNode, print } from 'graphql'
 import type { ExecutionResult } from 'graphql-ws'
-import { omitBy } from 'lodash'
+import { omitBy } from 'es-toolkit/compat'
 import type { GraphQLContext } from './context'
 import { isIntrospectionQuery, isNil } from './utils'
 

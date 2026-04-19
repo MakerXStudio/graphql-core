@@ -1,7 +1,7 @@
 import type { Logger } from '@makerx/node-common'
 import { randomUUID } from 'crypto'
 import type { IncomingMessage } from 'http'
-import { pick } from 'lodash'
+import { pick } from 'es-toolkit/compat'
 import { User } from '../User'
 import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
 import { extractTokenFromConnectionParams } from './utils'
