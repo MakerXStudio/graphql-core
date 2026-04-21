@@ -1,7 +1,7 @@
 import type { Logger } from '@makerx/node-common'
 import { pick } from 'es-toolkit/compat'
 import type { Request } from 'express'
-import { buildBaseRequestInfo, type BaseRequestInfo } from './request-utils'
+import { buildBaseRequestInfo, type BaseRequestInfo } from './request-info'
 import { User } from './User'
 
 export interface GraphQLContext<

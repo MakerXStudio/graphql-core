@@ -1,7 +1,7 @@
 import type { Request } from 'express'
 import type { IncomingMessage } from 'http'
 import { describe, expect, it } from 'vitest'
-import { buildBaseRequestInfo, buildConnectRequestInfo, connectRequestBaseUrl, requestBaseUrl } from './request-utils'
+import { buildBaseRequestInfo, buildConnectRequestInfo, connectRequestBaseUrl, requestBaseUrl } from './request-info'
 
 type Headers = Record<string, string | string[] | undefined>
 

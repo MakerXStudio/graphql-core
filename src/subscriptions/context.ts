@@ -1,9 +1,9 @@
 import type { Logger } from '@makerx/node-common'
-import type { IncomingMessage } from 'http'
 import { pick } from 'es-toolkit/compat'
+import type { IncomingMessage } from 'http'
 import { User } from '../User'
 import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
-import { buildConnectRequestInfo } from '../request-utils'
+import { buildConnectRequestInfo } from '../request-info'
 import { extractTokenFromConnectionParams } from './utils'
 
 export interface SubscriptionContextInput {
