@@ -1,7 +1,7 @@
 import type { Logger } from '@makerx/node-common'
-import { randomUUID } from 'crypto'
+import { pick } from 'es-toolkit/compat'
 import type { Request } from 'express'
-import { pick } from 'lodash'
+import { buildBaseRequestInfo, type BaseRequestInfo } from './request-info'
 import { User } from './User'
 
 export interface GraphQLContext<
@@ -17,20 +17,6 @@ export interface GraphQLContext<
 
 export type AnyGraphqlContext = GraphQLContext<any, any, any>
 
-export interface BaseRequestInfo extends Record<string, unknown> {
-  requestId: string
-  protocol: 'http' | 'https' | 'ws'
-  host: string
-  method: string
-  url: string
-  origin: string
-  referer?: string
-  correlationId?: string
-  arrLogId?: string
-  clientIp?: string
-  userAgent?: string
-}
-
 export interface LambdaContext {
   functionName?: string
   awsRequestId?: string
@@ -38,6 +24,13 @@ export interface LambdaContext {
 export type LambdaEvent = never
 export type LambdaRequestInfo = BaseRequestInfo & LambdaContext
 export type RequestInfo = BaseRequestInfo | LambdaRequestInfo
+
+// Strips the `[key: string]: unknown` index signature so `keyof` returns only the declared keys.
+type KnownKeys<T> = keyof {
+  [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K]
+}
+// Known keys for autocomplete, plus `(string & {})` to keep arbitrary augmented fields assignable.
+export type RequestInfoLogKey = KnownKeys<BaseRequestInfo> | keyof LambdaContext | (string & {})
 
 // standard claims https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
 export interface JwtPayload {
@@ -71,41 +64,38 @@ export interface ContextInput {
   event?: LambdaEvent
 }
 export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => Promise<TContext>
-export type CreateRequestLogger = (requestMetadata: Record<string, unknown>) => Logger
+export type CreateRequestLogger<TUser = User | undefined, TLogger extends Logger = Logger> = (
+  requestMetadata: Record<string, unknown>,
+  user: TUser,
+) => TLogger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
 
-export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQLContext> {
-  requestLogger: CreateRequestLogger | Logger
+// `createUser` is optional when TUser is compatible with the default `User | undefined`
+// (i.e. `defaultCreateUser` can satisfy it), and required when TUser is narrower.
+export type CreateContextConfig<
+  TUser = User | undefined,
+  TAugment extends Record<string, unknown> = Record<string, never>,
+  TLogger extends Logger = Logger,
+> = {
+  requestLogger: CreateRequestLogger<TUser, TLogger> | TLogger
   augmentRequestInfo?: AugmentRequestInfo
   claimsToLog?: string[]
-  createUser: CreateUser<InferUserFromContext<TContext>>
-  requestInfoToLog?: Array<keyof RequestInfo>
-  augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
-}
+  requestInfoToLog?: Array<RequestInfoLogKey>
+  augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
+} & ([User | undefined] extends [TUser] ? { createUser?: CreateUser<TUser> } : { createUser: CreateUser<TUser> })
 
-export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
-  requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-  protocol: req.protocol as 'http' | 'https',
-  host: req.hostname ?? '',
-  method: req.method ?? '',
-  url: req.originalUrl,
-  origin: req.get('Origin') ?? '',
-  referer: req.headers.referer?.toString() ?? '',
-  arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-  clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
-  correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
-  userAgent: req.headers['user-agent']?.toString() ?? undefined,
-})
+export const createContextFactory = <
+  TUser = User | undefined,
+  TAugment extends Record<string, unknown> = Record<string, never>,
+  TLogger extends Logger = Logger,
+>(
+  config: CreateContextConfig<TUser, TAugment, TLogger>,
+): CreateContext<GraphQLContext<TLogger, RequestInfo, TUser> & TAugment> => {
+  const { requestLogger, augmentRequestInfo, claimsToLog, requestInfoToLog, augmentContext } = config
+  // The conditional type on CreateContextConfig guarantees `createUser` is provided when TUser is
+  // narrower than `User | undefined`, so defaulting to defaultCreateUser is sound here.
+  const createUser = (config.createUser ?? defaultCreateUser) as CreateUser<TUser>
 
-export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQLContext>({
-  requestLogger,
-  augmentRequestInfo,
-  claimsToLog,
-  createUser,
-  requestInfoToLog,
-  augmentContext,
-}: CreateContextConfig<TContext>): CreateContext<TContext> => {
-  // the function that creates the GraphQL context
   return async (input: ContextInput) => {
     const { req, claims, context } = input
 
@@ -131,8 +121,10 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
         ...augmentRequestInfo(input),
       }
 
+    const user = await createUser(input)
+
     // create request logger
-    let logger: Logger
+    let logger: TLogger
     if (typeof requestLogger === 'function') {
       // build request logger metadata
       const requestLoggerMetadata: Record<string, unknown> = {}
@@ -141,21 +133,19 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
       // add user claims to log
       if (claims && claimsToLog?.length) requestLoggerMetadata.user = pick(claims, claimsToLog)
       // build the request logger
-      logger = requestLogger(requestLoggerMetadata)
+      logger = requestLogger(requestLoggerMetadata, user)
     } else logger = requestLogger
 
-    const graphqlContext: GraphQLContext = {
+    const graphqlContext: GraphQLContext<TLogger, RequestInfo, TUser> = {
       requestInfo,
       logger,
-      user: createUser ? await createUser(input) : undefined,
+      user,
       started: Date.now(),
     }
 
-    const augmentedGraphQLContext = augmentContext
-      ? { ...graphqlContext, ...(await augmentContext(graphqlContext as TContext)) }
-      : graphqlContext
+    const augmentedGraphQLContext = augmentContext ? { ...graphqlContext, ...(await augmentContext(graphqlContext)) } : graphqlContext
 
-    return augmentedGraphQLContext as TContext
+    return augmentedGraphQLContext as GraphQLContext<TLogger, RequestInfo, TUser> & TAugment
   }
 }
 

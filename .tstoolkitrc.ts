@@ -1,4 +1,4 @@
-import type { TsToolkitConfig } from "@makerx/ts-toolkit";
+import type { TsToolkitConfig } from '@makerx/ts-toolkit'
 
 const config: TsToolkitConfig = {
   packageConfig: {
@@ -8,9 +8,9 @@ const config: TsToolkitConfig = {
     main: 'index.ts',
     exports: {
       '.': 'index.ts',
-      './testing': 'testing.ts',
-      './subscriptions': 'subscriptions/index.ts'
-    }
-  }
+      './shield': 'shield.ts',
+      './subscriptions': 'subscriptions/index.ts',
+    },
+  },
 }
 export default config

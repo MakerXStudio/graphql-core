@@ -10,41 +10,45 @@ Note: See explanation on \*Express peer dependency below.
 
 `createContextFactory` returns a function that creates your GraphQL context using a standard (extensible) representation, including:
 
-- `logger`: a logger instance to use downstream of resolvers, usually logging some request metadata to assist correlating log entries (for example the X-Correlation-Id header value)
-- `requestInfo`: useful request info, for example to define per-request behaviour (multi-tenant apps), pass through correlation headers to downstream services etc
-- `user`: an object representing the user or system identity (see definition below, defaults to creating a `User` based on JWT claims)
-- anything else you wish to add to the context
+- `logger`: a logger instance to use downstream of resolvers, built by your `requestLogger` factory, which receives both the resolved request metadata and the resolved `user` so you can enrich log output with user-derived fields (see [Request logger](#request-logger))
+- `requestInfo`: useful request info — `source` (`http` or `subscription`), `protocol` (`http`/`https`/`ws`/`wss`), `host`, `baseUrl`, `url`, correlation/client headers, etc. Use it for per-request behaviour (multi-tenant apps), passing correlation headers downstream, etc. See [Request info](#request-info)
+- `user`: an object representing the user or system identity (see [User](#user); defaults to a `User` built from JWT claims when `createUser` is omitted)
+- anything else you wish to add to the context via `augmentContext`
 
 ### Step 1 - Define your context + creation
 
 context.ts
 
 ```ts
-// define the base context type, setting the logger type
-type BaseContext = GraphQLContextBase<Logger>
 // define the extra stuff added to our app's context
 type ExtraContext = {
   services: Services
   loaders: Loaders
 }
-// our app's context type, returned from the createContext function
-export type GraphQLContext = BaseContext & ExtraContext
 
 // configure the createContext function
-export const createContext = createContextFactory<GraphQLContext>({
-  // set the keys of the user claims (JWT payload) we want added to the request metadata passed to the requestLogger factory
+// TUser is inferred from `createUser`, TAugment is inferred from `augmentContext`'s return type
+export const createContext = createContextFactory({
+  // keys of the user claims (JWT payload) to include in the request metadata passed to the requestLogger factory
   claimsToLog: ['oid', 'aud', 'tid', 'azp', 'iss', 'scp', 'roles'],
-  // set the keys of the request info we want added to the request metadata passed to the requestLogger factory
+  // keys of the request info to include in the request metadata passed to the requestLogger factory
   requestInfoToLog: ['origin', 'requestId', 'correlationId'],
-  // use a winston child logger to add metadata to log output
-  requestLogger: (requestMetadata) => logger.child(requestMetadata),
-  // build the rest of the app context
+  // build the per-request logger; receives the request metadata and the resolved user
+  // e.g. enrich log output with user-derived fields like multi-tenant `instance`
+  requestLogger: (requestMetadata, user) => logger.child({ ...requestMetadata, instance: user?.instance }),
+  // resolve the user for each request — optional; omit to use the default User-from-JWT behaviour
+  // (required when you supply a narrower TUser generic)
+  createUser: async ({ claims }) => new AppUser(claims),
+  // build the rest of the app context — annotate the return type to lock in inference
   augmentContext: (context): ExtraContext => {
     const services = createServices(context)
     const loaders = createLoaders(services)
     return { services, loaders }
   },
 })
+
+// derive the full context type from the factory's return type
+export type GraphQLContext = Awaited<ReturnType<typeof createContext>>
 ```
 
 ### Step 2 - Map the context creation to implementation
@@ -81,6 +85,50 @@ const graphqlServer = createServer({
   ...yogaServerConfig,
   context: ({ req }) => createContext({ req, claims: req.user }),
 })
+```
+
+## Request info
+
+`context.requestInfo` is built for every request — both HTTP and websocket subscription connects — so downstream code can distinguish sources, rebuild URLs, pass through correlation headers, etc.
+
+| Field           | Description                                                                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requestId`     | `x-request-id` header if present, otherwise a freshly generated UUID.                                                                                                         |
+| `source`        | `'http'` for regular requests, `'subscription'` for websocket connects.                                                                                                       |
+| `protocol`      | `'http'` / `'https'` for HTTP, `'ws'` / `'wss'` for subscriptions (resolved via `x-forwarded-proto` or TLS socket encryption).                                                |
+| `host`          | Hostname only (no port). Prefers `x-forwarded-host`, falls back to the `Host` header, then `req.hostname` (Express only).                                                     |
+| `port`          | Port parsed from `x-forwarded-host` / `Host` header when present; `undefined` otherwise.                                                                                      |
+| `baseUrl`       | Fully-qualified origin (`scheme://host[:port]`) with default ports stripped. For subscriptions the scheme is normalised to `http(s)` so the value composes with relative URLs. |
+| `url`           | `req.originalUrl` for HTTP, `req.url` for subscription connects.                                                                                                              |
+| `origin`        | `Origin` header.                                                                                                                                                              |
+| `referer`       | `Referer` header.                                                                                                                                                             |
+| `correlationId` | `x-correlation-id` header.                                                                                                                                                    |
+| `arrLogId`      | `x-arr-log-id` header (Azure Front Door / ARR).                                                                                                                               |
+| `clientIp`      | First value from `x-forwarded-for`, falling back to `socket.remoteAddress`.                                                                                                   |
+| `userAgent`     | `User-Agent` header.                                                                                                                                                          |
+
+You can add more via `augmentRequestInfo(input)`. Lambda deployments also get `functionName` and `awsRequestId` when a `LambdaContext` is supplied.
+
+Helpers are exported for custom wiring: `buildBaseRequestInfo(req)` (Express), `buildConnectRequestInfo(req)` (websocket `IncomingMessage`), and `requestBaseUrl` / `connectRequestBaseUrl`.
+
+## Request logger
+
+The `requestLogger` config accepts either a pre-built `Logger` or a factory `(requestMetadata, user) => Logger`.
+
+The factory form runs per request and receives:
+
+- `requestMetadata` — an object containing `request` (the subset of `requestInfo` selected by `requestInfoToLog`) and `user` (the subset of claims selected by `claimsToLog`)
+- `user` — the resolved `user` value returned by `createUser` (typed as your `TUser`)
+
+This lets you enrich log output with fields derived from the resolved user, for example a multi-tenant instance id or an internal user id from your database, that aren't present on the raw JWT claims:
+
+```ts
+requestLogger: (requestMetadata, user) =>
+  logger.child({
+    ...requestMetadata,
+    instance: user?.instance,
+    userId: user?.id,
+  }),
 ```
 
 ## User
@@ -140,29 +188,36 @@ This library includes a `subscriptions` module to provide simple setup using the
    Example showing both normal context + subscription context creation:
 
    ```ts
-   const augmentContext = (context: GraphQLContext) => {
+   type ExtraContext = { services: Services; dataSource: DataSource; dataLoaders: DataLoaders }
+
+   // the `context` arg is typed `GraphQLContext<Logger, RequestInfo, AppUser | undefined>` here —
+   // TUser flows through from `createUser`, so just annotate the return type and let inference do the rest
+   const augmentContext = (context: GraphQLContext<Logger, RequestInfo, AppUser | undefined>): ExtraContext => {
      const services = createServices(context)
      const dataLoaders = createDataLoaders()
      return { services, dataSource, dataLoaders }
    }
 
-   // create a context using request based input
-   const createContext = createContextFactory<GraphQLContext>({
+   // create a context using request based input — TUser / TAugment inferred from the config
+   const createContext = createContextFactory({
      claimsToLog,
      requestInfoToLog,
-     requestLogger: (requestMetadata) => logger.child(requestMetadata),
+     requestLogger: (requestMetadata, user) => logger.child({ ...requestMetadata, instance: user?.instance }),
      createUser: ({ claims, req }) => findUpdateOrCreateUser(claims, req.headers.authorization?.substring(7)),
      augmentContext,
    })
 
    // create a context using graphql-ws Server#context callback input
-   const createSubscriptionContext = createSubscriptionContextFactory<GraphQLContext>({
-     claimsToLog
+   const createSubscriptionContext = createSubscriptionContextFactory({
+     claimsToLog,
      requestInfoToLog,
-     requestLogger: (requestMetadata) => logger.child(requestMetadata),
+     requestLogger: (requestMetadata, user) => logger.child({ ...requestMetadata, instance: user?.instance }),
      createUser: ({ claims, connectionParams }) => findUpdateOrCreateUser(claims, extractTokenFromConnectionParams(connectionParams)),
      augmentContext,
    })
+
+   // share one context type between query and subscription paths
+   export type GraphQLContext = Awaited<ReturnType<typeof createContext>>
    ```
 
 1. Create a subscriptions server, using the ws-server cleanup function in your server lifecycle.
@@ -203,85 +258,6 @@ This library includes a `subscriptions` module to provide simple setup using the
    ```
 
 1. For authorisation, clients can include a connection parameter named `authorization` or `Authorization` using the HTTP header format `Bearer <token>`. Note: [Apollo Sandbox](https://studio.apollographql.com/sandbox/explorer) will include an `Authorization` connection parameter when you specify an HTTP `Authorization` header via the UI.
-
-## Testing
-
-The testing submodule exports utility functions for easily constructing ApolloClient instances for integration testing on NodeJS. The `errorPolicy` is set to `all` so that returned errors can be checked.
-
-### Setup
-
-If you use this module, you need to install `@apollo/client`:
-
-```
-npm install --save-dev @apollo/client
-```
-
-### Usage
-
-- `createTestClient` accepts a url and optional accessToken.
-- `createTestClientWithClientCredentials` accepts a url and client credentials config and will fetch and attach an access token to each request.
-
-testing.ts
-
-```ts
-export const testClient = createTestClientWithClientCredentials(process.env.INTEGRATION_TEST_URL, clientCredentialsConfig)
-
-export const unauthenticatedClient = createTestClient(process.env.INTEGRATION_TEST_URL)
-```
-
-tweets.spec.ts
-
-```ts
-describe('tweets query', () => {
-  const tweetsQuery = gql`
-    query Tweets($input: TweetsWhere) {
-      tweets(input: $input) {
-        data {
-          text
-          createdAt
-        }
-      }
-    }
-  `
-
-  it('returns tweets with sensible default limit', async () => {
-    const {
-      data: { tweets },
-      errors,
-    } = await testClient.query<TweetsQuery>({
-      query: tweetsQuery,
-    })
-
-    expect(errors).toBeUndefined()
-    expect(tweets).toBeDefined()
-    expect(tweets?.data?.length).toBe(10)
-  })
-
-  it('guards against high limit', async () => {
-    const tooHighLimit = 101
-    await expect(async () => {
-      await testClient.query<TweetsQuery, TweetsQueryVariables>({
-        query: tweetsQuery,
-        variables: {
-          input: {
-            maxResults: tooHighLimit,
-          },
-        },
-      })
-    }).rejects.toThrowErrorMatchingInlineSnapshot(`"Response not successful: Received status code 400"`)
-  })
-
-  it('requires authorisation', async () => {
-    const { data, errors } = await unauthenticatedClient.query<TweetsQuery, TweetsQueryVariables>({
-      query: tweetsQuery,
-    })
-
-    expect(data.tweets).toBeNull()
-    expect(errors?.length).toBe(1)
-    expect(errors?.[0].message).toMatchInlineSnapshot(`"User is not authorized to access Query.tweets"`)
-  })
-})
-```
 
 ## Utils
 

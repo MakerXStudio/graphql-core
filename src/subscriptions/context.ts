@@ -1,9 +1,9 @@
 import type { Logger } from '@makerx/node-common'
-import { randomUUID } from 'crypto'
+import { pick } from 'es-toolkit/compat'
 import type { IncomingMessage } from 'http'
-import { pick } from 'lodash'
 import { User } from '../User'
-import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
+import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo, RequestInfoLogKey } from '../context'
+import { buildConnectRequestInfo } from '../request-info'
 import { extractTokenFromConnectionParams } from './utils'
 
 export interface SubscriptionContextInput {
@@ -12,51 +12,49 @@ export interface SubscriptionContextInput {
   claims?: JwtPayload
 }
 
-export type CreateSubscriptionUser<T = User | undefined> = (input: SubscriptionContextInput) => Promise<T>
+export type CreateSubscriptionUser<T = User | undefined> = (input: SubscriptionContextInput) => Promise<T> | T
 export type CreateSubscriptionContext<TContext = GraphQLContext> = (input: SubscriptionContextInput) => Promise<TContext>
 export type AugmentSubscriptionRequestInfo = (input: SubscriptionContextInput) => Record<string, unknown>
 
-export interface CreateSubscriptionContextConfig<TContext = GraphQLContext> {
-  requestLogger: CreateRequestLogger | Logger
+// `createUser` is optional when TUser is compatible with the default `User | undefined`
+// (i.e. defaultCreateUser can satisfy it), and required when TUser is narrower.
+export type CreateSubscriptionContextConfig<
+  TUser = User | undefined,
+  TAugment extends Record<string, unknown> = Record<string, never>,
+  TLogger extends Logger = Logger,
+> = {
+  requestLogger: CreateRequestLogger<TUser, TLogger> | TLogger
   augmentRequestInfo?: AugmentSubscriptionRequestInfo
   claimsToLog?: string[]
-  createUser?: CreateSubscriptionUser
-  requestInfoToLog?: Array<keyof RequestInfo>
-  augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
-}
+  requestInfoToLog?: Array<RequestInfoLogKey>
+  augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
+} & ([User | undefined] extends [TUser] ? { createUser?: CreateSubscriptionUser<TUser> } : { createUser: CreateSubscriptionUser<TUser> })
 
-export const createSubscriptionContextFactory = <TContext extends GraphQLContext = GraphQLContext>({
-  requestLogger,
-  augmentRequestInfo,
-  claimsToLog,
-  createUser = defaultCreateUser,
-  requestInfoToLog,
-  augmentContext,
-}: CreateSubscriptionContextConfig<TContext>): CreateSubscriptionContext<TContext> => {
-  // the function that creates the GraphQL context
+export const createSubscriptionContextFactory = <
+  TUser = User | undefined,
+  TAugment extends Record<string, unknown> = Record<string, never>,
+  TLogger extends Logger = Logger,
+>(
+  config: CreateSubscriptionContextConfig<TUser, TAugment, TLogger>,
+): CreateSubscriptionContext<GraphQLContext<TLogger, RequestInfo, TUser> & TAugment> => {
+  const { requestLogger, augmentRequestInfo, claimsToLog, requestInfoToLog, augmentContext } = config
+  // The conditional type on CreateSubscriptionContextConfig guarantees `createUser` is provided
+  // when TUser is narrower than `User | undefined`, so defaulting is sound here.
+  const createUser = (config.createUser ?? defaultCreateUser) as CreateSubscriptionUser<TUser>
+
   return async (input: SubscriptionContextInput) => {
     const { connectRequest: req, claims } = input
 
-    const xForwardedFor = req.headers['x-forwarded-for']
-    const host = Array.isArray(xForwardedFor) ? xForwardedFor[0] : (xForwardedFor ?? req.headers.host)
-
     // build request info from the connect request and socket
     const requestInfo: RequestInfo = {
-      requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-      protocol: 'ws',
-      host: host ?? '',
-      method: req.method ?? '',
-      url: req.url ?? '',
-      origin: req.headers['origin'] ?? '',
-      referer: req.headers.referer?.toString() ?? '',
-      arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-      clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
-      correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
+      ...buildConnectRequestInfo(req),
       ...augmentRequestInfo?.(input),
     }
 
+    const user = await createUser(input)
+
     // create request logger
-    let logger: Logger
+    let logger: TLogger
     if (typeof requestLogger === 'function') {
       // build request logger metadata
       const requestLoggerMetadata: Record<string, unknown> = {}
@@ -65,21 +63,19 @@ export const createSubscriptionContextFactory = <TContext extends GraphQLContext
       // add user claims to log
       if (claims && claimsToLog?.length) requestLoggerMetadata.user = pick(claims, claimsToLog)
       // build the request logger
-      logger = requestLogger(requestLoggerMetadata)
+      logger = requestLogger(requestLoggerMetadata, user)
     } else logger = requestLogger
 
-    const graphqlContext: GraphQLContext = {
+    const graphqlContext: GraphQLContext<TLogger, RequestInfo, TUser> = {
       requestInfo,
       logger,
-      user: await createUser(input),
+      user,
       started: Date.now(),
     }
 
-    const augmentedGraphQLContext = augmentContext
-      ? { ...graphqlContext, ...(await augmentContext(graphqlContext as TContext)) }
-      : graphqlContext
+    const augmentedGraphQLContext = augmentContext ? { ...graphqlContext, ...(await augmentContext(graphqlContext)) } : graphqlContext
 
-    return augmentedGraphQLContext as TContext
+    return augmentedGraphQLContext as GraphQLContext<TLogger, RequestInfo, TUser> & TAugment
   }
 }
 
