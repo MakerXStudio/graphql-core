@@ -8,6 +8,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   source: 'http' | 'subscription'
   protocol: 'http' | 'https' | 'ws' | 'wss'
   host: string
+  port?: number
   method: string
   baseUrl: string
   url: string
@@ -46,17 +47,24 @@ const isEncryptedConnect = (req: IncomingMessage): boolean => {
 
 const resolveForwardedHost = (req: IncomingMessage): string | undefined => firstHeaderValue(req.headers['x-forwarded-host'])
 
+const resolveHostAndPort = (req: IncomingMessage, fallbackHostname?: string): { host: string; port: number | undefined } => {
+  const headerValue = resolveForwardedHost(req) ?? req.headers.host
+  if (headerValue) {
+    const { hostname, port } = parseHostHeader(headerValue)
+    return { host: hostname, port }
+  }
+  return { host: fallbackHostname ?? '', port: undefined }
+}
+
 export const requestBaseUrl = (req: Request): string => {
-  const hostHeader = resolveForwardedHost(req) ?? req.headers.host
-  const { hostname, port } = hostHeader ? parseHostHeader(hostHeader) : { hostname: req.hostname, port: undefined }
-  return formatBaseUrl(req.protocol, hostname, port)
+  const { host, port } = resolveHostAndPort(req, req.hostname)
+  return formatBaseUrl(req.protocol, host, port)
 }
 
 export const connectRequestBaseUrl = (req: IncomingMessage): string => {
-  const hostHeader = resolveForwardedHost(req) ?? req.headers.host
-  if (!hostHeader) throw new Error('Cannot determine base URL from websocket connect request')
-  const { hostname, port } = parseHostHeader(hostHeader)
-  return formatBaseUrl(isEncryptedConnect(req) ? 'https' : 'http', hostname, port)
+  const { host, port } = resolveHostAndPort(req)
+  if (!host) throw new Error('Cannot determine base URL from websocket connect request')
+  return formatBaseUrl(isEncryptedConnect(req) ? 'https' : 'http', host, port)
 }
 
 const buildSharedRequestInfo = (req: IncomingMessage) => ({
@@ -70,20 +78,30 @@ const buildSharedRequestInfo = (req: IncomingMessage) => ({
   userAgent: req.headers['user-agent']?.toString() ?? undefined,
 })
 
-export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
-  ...buildSharedRequestInfo(req),
-  source: 'http',
-  protocol: req.protocol as 'http' | 'https',
-  host: resolveForwardedHost(req) ?? req.hostname ?? '',
-  baseUrl: requestBaseUrl(req),
-  url: req.originalUrl,
-})
+export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => {
+  const { host, port } = resolveHostAndPort(req, req.hostname)
+  return {
+    ...buildSharedRequestInfo(req),
+    source: 'http',
+    protocol: req.protocol as 'http' | 'https',
+    host,
+    port,
+    baseUrl: formatBaseUrl(req.protocol, host, port),
+    url: req.originalUrl,
+  }
+}
 
-export const buildConnectRequestInfo = (req: IncomingMessage): BaseRequestInfo => ({
-  ...buildSharedRequestInfo(req),
-  source: 'subscription',
-  protocol: isEncryptedConnect(req) ? 'wss' : 'ws',
-  host: resolveForwardedHost(req) ?? req.headers.host ?? '',
-  baseUrl: connectRequestBaseUrl(req),
-  url: req.url ?? '',
-})
+export const buildConnectRequestInfo = (req: IncomingMessage): BaseRequestInfo => {
+  const { host, port } = resolveHostAndPort(req)
+  const protocol = isEncryptedConnect(req) ? 'wss' : 'ws'
+  if (!host) throw new Error('Cannot determine base URL from websocket connect request')
+  return {
+    ...buildSharedRequestInfo(req),
+    source: 'subscription',
+    protocol,
+    host,
+    port,
+    baseUrl: formatBaseUrl(protocol === 'wss' ? 'https' : 'http', host, port),
+    url: req.url ?? '',
+  }
+}

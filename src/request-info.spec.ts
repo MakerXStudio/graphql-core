@@ -181,7 +181,8 @@ describe('buildBaseRequestInfo', () => {
       requestId: 'req-abc',
       source: 'http',
       protocol: 'https',
-      host: 'api.example.com:8443',
+      host: 'api.example.com',
+      port: 8443,
       method: 'POST',
       baseUrl: 'https://api.example.com:8443',
       url: '/graphql?q=1',
@@ -224,9 +225,28 @@ describe('buildBaseRequestInfo', () => {
     expect(info.userAgent).toBeUndefined()
   })
 
-  it('falls back to req.hostname for host when x-forwarded-host absent', () => {
+  it('splits host header into host + port when x-forwarded-host absent', () => {
+    const req = makeExpressRequest({ headers: { host: 'direct.example.com:8080' } })
+    const info = buildBaseRequestInfo(req)
+    expect(info.host).toBe('direct.example.com')
+    expect(info.port).toBe(8080)
+  })
+
+  it('falls back to req.hostname for host when no host header available', () => {
     const req = makeExpressRequest({ hostname: 'fallback.example.com' })
-    expect(buildBaseRequestInfo(req).host).toBe('fallback.example.com')
+    const info = buildBaseRequestInfo(req)
+    expect(info.host).toBe('fallback.example.com')
+    expect(info.port).toBeUndefined()
+  })
+
+  it('splits x-forwarded-host into host + port', () => {
+    const req = makeExpressRequest({
+      protocol: 'https',
+      headers: { 'x-forwarded-host': 'public.example.com:8443' },
+    })
+    const info = buildBaseRequestInfo(req)
+    expect(info.host).toBe('public.example.com')
+    expect(info.port).toBe(8443)
   })
 
   it('builds local dev request info (http, localhost:4000, no proxy headers)', () => {
@@ -248,6 +268,7 @@ describe('buildBaseRequestInfo', () => {
       source: 'http',
       protocol: 'http',
       host: 'localhost',
+      port: 4000,
       baseUrl: 'http://localhost:4000',
       url: '/graphql',
       method: 'POST',
@@ -285,6 +306,7 @@ describe('buildConnectRequestInfo', () => {
       source: 'subscription',
       protocol: 'wss',
       host: 'api.example.com',
+      port: undefined,
       method: 'GET',
       baseUrl: 'https://api.example.com',
       url: '/graphql',
@@ -324,9 +346,11 @@ describe('buildConnectRequestInfo', () => {
     expect(info.baseUrl).toBe('https://example.com')
   })
 
-  it('falls back to headers.host for host field when x-forwarded-host absent', () => {
+  it('splits headers.host into host + port when x-forwarded-host absent', () => {
     const req = makeIncomingMessage({ headers: { host: 'direct.example.com:8080' } })
-    expect(buildConnectRequestInfo(req).host).toBe('direct.example.com:8080')
+    const info = buildConnectRequestInfo(req)
+    expect(info.host).toBe('direct.example.com')
+    expect(info.port).toBe(8080)
   })
 
   it('throws when no host header available', () => {
@@ -351,7 +375,8 @@ describe('buildConnectRequestInfo', () => {
     expect(info).toMatchObject({
       source: 'subscription',
       protocol: 'ws',
-      host: 'localhost:4000',
+      host: 'localhost',
+      port: 4000,
       baseUrl: 'http://localhost:4000',
       url: '/graphql',
       origin: 'http://localhost:4000',

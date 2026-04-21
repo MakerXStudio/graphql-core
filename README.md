@@ -12,7 +12,7 @@ Note: See explanation on \*Express peer dependency below.
 
 - `logger`: a logger instance to use downstream of resolvers, built by your `requestLogger` factory, which receives both the resolved request metadata and the resolved `user` so you can enrich log output with user-derived fields (see [Request logger](#request-logger))
 - `requestInfo`: useful request info — `source` (`http` or `subscription`), `protocol` (`http`/`https`/`ws`/`wss`), `host`, `baseUrl`, `url`, correlation/client headers, etc. Use it for per-request behaviour (multi-tenant apps), passing correlation headers downstream, etc. See [Request info](#request-info)
-- `user`: an object representing the user or system identity (see [User](#user), defaults to a `User` built from JWT claims when you opt in with `defaultCreateUser`)
+- `user`: an object representing the user or system identity (see [User](#user); defaults to a `User` built from JWT claims when `createUser` is omitted)
 - anything else you wish to add to the context via `augmentContext`
 
 ### Step 1 - Define your context + creation
@@ -96,7 +96,8 @@ const graphqlServer = createServer({
 | `requestId`     | `x-request-id` header if present, otherwise a freshly generated UUID.                                                                                                         |
 | `source`        | `'http'` for regular requests, `'subscription'` for websocket connects.                                                                                                       |
 | `protocol`      | `'http'` / `'https'` for HTTP, `'ws'` / `'wss'` for subscriptions (resolved via `x-forwarded-proto` or TLS socket encryption).                                                |
-| `host`          | Prefers `x-forwarded-host`, falls back to the `Host` header / `req.hostname`.                                                                                                 |
+| `host`          | Hostname only (no port). Prefers `x-forwarded-host`, falls back to the `Host` header, then `req.hostname` (Express only).                                                     |
+| `port`          | Port parsed from `x-forwarded-host` / `Host` header when present; `undefined` otherwise.                                                                                      |
 | `baseUrl`       | Fully-qualified origin (`scheme://host[:port]`) with default ports stripped. For subscriptions the scheme is normalised to `http(s)` so the value composes with relative URLs. |
 | `url`           | `req.originalUrl` for HTTP, `req.url` for subscription connects.                                                                                                              |
 | `origin`        | `Origin` header.                                                                                                                                                              |
@@ -107,8 +108,6 @@ const graphqlServer = createServer({
 | `userAgent`     | `User-Agent` header.                                                                                                                                                          |
 
 You can add more via `augmentRequestInfo(input)`. Lambda deployments also get `functionName` and `awsRequestId` when a `LambdaContext` is supplied.
-
-> **Note on `host` in v3:** `requestInfo.host` now resolves consistently across Express `Request` and the websocket connect `IncomingMessage` — both paths always trust the `x-forwarded-host` / `Host` headers rather than Express's `req.hostname`. As a result, when a proxy forwards a port in the `Host` / `x-forwarded-host` header, that port now appears on `host` (pre-v3 Express requests used `req.hostname`, which strips the port).
 
 Helpers are exported for custom wiring: `buildBaseRequestInfo(req)` (Express), `buildConnectRequestInfo(req)` (websocket `IncomingMessage`), and `requestBaseUrl` / `connectRequestBaseUrl`.
 
