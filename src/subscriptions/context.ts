@@ -2,7 +2,7 @@ import type { Logger } from '@makerx/node-common'
 import { pick } from 'es-toolkit/compat'
 import type { IncomingMessage } from 'http'
 import { User } from '../User'
-import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
+import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo, RequestInfoLogKey } from '../context'
 import { buildConnectRequestInfo } from '../request-info'
 import { extractTokenFromConnectionParams } from './utils'
 
@@ -26,7 +26,7 @@ export type CreateSubscriptionContextConfig<
   requestLogger: CreateRequestLogger<TUser, TLogger> | TLogger
   augmentRequestInfo?: AugmentSubscriptionRequestInfo
   claimsToLog?: string[]
-  requestInfoToLog?: Array<keyof RequestInfo>
+  requestInfoToLog?: Array<RequestInfoLogKey>
   augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
 } & ([User | undefined] extends [TUser] ? { createUser?: CreateSubscriptionUser<TUser> } : { createUser: CreateSubscriptionUser<TUser> })
 

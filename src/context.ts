@@ -25,6 +25,13 @@ export type LambdaEvent = never
 export type LambdaRequestInfo = BaseRequestInfo & LambdaContext
 export type RequestInfo = BaseRequestInfo | LambdaRequestInfo
 
+// Strips the `[key: string]: unknown` index signature so `keyof` returns only the declared keys.
+type KnownKeys<T> = keyof {
+  [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K]
+}
+// Known keys for autocomplete, plus `(string & {})` to keep arbitrary augmented fields assignable.
+export type RequestInfoLogKey = KnownKeys<BaseRequestInfo> | keyof LambdaContext | (string & {})
+
 // standard claims https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
 export interface JwtPayload {
   [key: string]: unknown
@@ -73,7 +80,7 @@ export type CreateContextConfig<
   requestLogger: CreateRequestLogger<TUser, TLogger> | TLogger
   augmentRequestInfo?: AugmentRequestInfo
   claimsToLog?: string[]
-  requestInfoToLog?: Array<keyof RequestInfo>
+  requestInfoToLog?: Array<RequestInfoLogKey>
   augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
 } & ([User | undefined] extends [TUser] ? { createUser?: CreateUser<TUser> } : { createUser: CreateUser<TUser> })
 
