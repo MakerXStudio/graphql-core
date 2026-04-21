@@ -20,31 +20,33 @@ Note: See explanation on \*Express peer dependency below.
 context.ts
 
 ```ts
-// define the base context type, setting the logger type
-type BaseContext = GraphQLContextBase<Logger>
 // define the extra stuff added to our app's context
 type ExtraContext = {
   services: Services
   loaders: Loaders
 }
-// our app's context type, returned from the createContext function
-export type GraphQLContext = BaseContext & ExtraContext
 
 // configure the createContext function
-export const createContext = createContextFactory<GraphQLContext>({
+// TUser is inferred from `createUser`, TAugment is inferred from `augmentContext`'s return type
+export const createContext = createContextFactory({
   // set the keys of the user claims (JWT payload) we want added to the request metadata passed to the requestLogger factory
   claimsToLog: ['oid', 'aud', 'tid', 'azp', 'iss', 'scp', 'roles'],
   // set the keys of the request info we want added to the request metadata passed to the requestLogger factory
   requestInfoToLog: ['origin', 'requestId', 'correlationId'],
   // use a winston child logger to add metadata to log output
   requestLogger: (requestMetadata) => logger.child(requestMetadata),
-  // build the rest of the app context
+  // provide a createUser function (or omit to use the default User based on JWT claims)
+  createUser: defaultCreateUser,
+  // build the rest of the app context — annotate the return type to lock in inference
   augmentContext: (context): ExtraContext => {
     const services = createServices(context)
     const loaders = createLoaders(services)
     return { services, loaders }
   },
 })
+
+// derive the full context type from the factory's return type
+export type GraphQLContext = Awaited<ReturnType<typeof createContext>>
 ```
 
 ### Step 2 - Map the context creation to implementation
@@ -140,14 +142,16 @@ This library includes a `subscriptions` module to provide simple setup using the
    Example showing both normal context + subscription context creation:
 
    ```ts
-   const augmentContext = (context: GraphQLContext) => {
+   type ExtraContext = { services: Services; dataSource: DataSource; dataLoaders: DataLoaders }
+
+   const augmentContext = (context: GraphQLContextBase<Logger, RequestInfo, AppUser | undefined>): ExtraContext => {
      const services = createServices(context)
      const dataLoaders = createDataLoaders()
      return { services, dataSource, dataLoaders }
    }
 
-   // create a context using request based input
-   const createContext = createContextFactory<GraphQLContext>({
+   // create a context using request based input — TUser / TAugment inferred from the config
+   const createContext = createContextFactory({
      claimsToLog,
      requestInfoToLog,
      requestLogger: (requestMetadata) => logger.child(requestMetadata),
@@ -156,13 +160,16 @@ This library includes a `subscriptions` module to provide simple setup using the
    })
 
    // create a context using graphql-ws Server#context callback input
-   const createSubscriptionContext = createSubscriptionContextFactory<GraphQLContext>({
-     claimsToLog
+   const createSubscriptionContext = createSubscriptionContextFactory({
+     claimsToLog,
      requestInfoToLog,
      requestLogger: (requestMetadata) => logger.child(requestMetadata),
      createUser: ({ claims, connectionParams }) => findUpdateOrCreateUser(claims, extractTokenFromConnectionParams(connectionParams)),
      augmentContext,
    })
+
+   // share one context type between query and subscription paths
+   export type GraphQLContext = Awaited<ReturnType<typeof createContext>>
    ```
 
 1. Create a subscriptions server, using the ws-server cleanup function in your server lifecycle.

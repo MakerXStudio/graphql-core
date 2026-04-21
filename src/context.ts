@@ -57,26 +57,26 @@ export interface ContextInput {
   event?: LambdaEvent
 }
 export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => Promise<TContext>
-export type CreateRequestLogger = (requestMetadata: Record<string, unknown>, user: User | undefined) => Logger
+export type CreateRequestLogger<TUser = User | undefined> = (requestMetadata: Record<string, unknown>, user: TUser) => Logger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
 
-export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQLContext> {
-  requestLogger: CreateRequestLogger | Logger
+export interface CreateContextConfig<TUser = User | undefined, TAugment extends Record<string, unknown> = Record<string, never>> {
+  requestLogger: CreateRequestLogger<TUser> | Logger
   augmentRequestInfo?: AugmentRequestInfo
   claimsToLog?: string[]
-  createUser: CreateUser<InferUserFromContext<TContext>>
+  createUser: CreateUser<TUser>
   requestInfoToLog?: Array<keyof RequestInfo>
-  augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
+  augmentContext?: (context: GraphQLContext<Logger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
 }
 
-export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQLContext>({
+export const createContextFactory = <TUser = User | undefined, TAugment extends Record<string, unknown> = Record<string, never>>({
   requestLogger,
   augmentRequestInfo,
   claimsToLog,
   createUser,
   requestInfoToLog,
   augmentContext,
-}: CreateContextConfig<TContext>): CreateContext<TContext> => {
+}: CreateContextConfig<TUser, TAugment>): CreateContext<GraphQLContext<Logger, RequestInfo, TUser> & TAugment> => {
   // the function that creates the GraphQL context
   return async (input: ContextInput) => {
     const { req, claims, context } = input
@@ -103,7 +103,7 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
         ...augmentRequestInfo(input),
       }
 
-    const user = createUser ? await createUser(input) : undefined
+    const user = await createUser(input)
 
     // create request logger
     let logger: Logger
@@ -118,18 +118,16 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
       logger = requestLogger(requestLoggerMetadata, user)
     } else logger = requestLogger
 
-    const graphqlContext: GraphQLContext = {
+    const graphqlContext: GraphQLContext<Logger, RequestInfo, TUser> = {
       requestInfo,
       logger,
       user,
       started: Date.now(),
     }
 
-    const augmentedGraphQLContext = augmentContext
-      ? { ...graphqlContext, ...(await augmentContext(graphqlContext as TContext)) }
-      : graphqlContext
+    const augmentedGraphQLContext = augmentContext ? { ...graphqlContext, ...(await augmentContext(graphqlContext)) } : graphqlContext
 
-    return augmentedGraphQLContext as TContext
+    return augmentedGraphQLContext as GraphQLContext<Logger, RequestInfo, TUser> & TAugment
   }
 }
 
