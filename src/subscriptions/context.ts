@@ -55,6 +55,8 @@ export const createSubscriptionContextFactory = <TContext extends GraphQLContext
       ...augmentRequestInfo?.(input),
     }
 
+    const user = await createUser(input)
+
     // create request logger
     let logger: Logger
     if (typeof requestLogger === 'function') {
@@ -65,13 +67,13 @@ export const createSubscriptionContextFactory = <TContext extends GraphQLContext
       // add user claims to log
       if (claims && claimsToLog?.length) requestLoggerMetadata.user = pick(claims, claimsToLog)
       // build the request logger
-      logger = requestLogger(requestLoggerMetadata)
+      logger = requestLogger(requestLoggerMetadata, user)
     } else logger = requestLogger
 
     const graphqlContext: GraphQLContext = {
       requestInfo,
       logger,
-      user: await createUser(input),
+      user,
       started: Date.now(),
     }
 

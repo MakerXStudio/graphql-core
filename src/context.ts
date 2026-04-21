@@ -71,7 +71,7 @@ export interface ContextInput {
   event?: LambdaEvent
 }
 export type CreateContext<TContext = GraphQLContext> = (input: ContextInput) => Promise<TContext>
-export type CreateRequestLogger = (requestMetadata: Record<string, unknown>) => Logger
+export type CreateRequestLogger = (requestMetadata: Record<string, unknown>, user: User | undefined) => Logger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
 
 export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQLContext> {
@@ -131,6 +131,8 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
         ...augmentRequestInfo(input),
       }
 
+    const user = createUser ? await createUser(input) : undefined
+
     // create request logger
     let logger: Logger
     if (typeof requestLogger === 'function') {
@@ -141,13 +143,13 @@ export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQ
       // add user claims to log
       if (claims && claimsToLog?.length) requestLoggerMetadata.user = pick(claims, claimsToLog)
       // build the request logger
-      logger = requestLogger(requestLoggerMetadata)
+      logger = requestLogger(requestLoggerMetadata, user)
     } else logger = requestLogger
 
     const graphqlContext: GraphQLContext = {
       requestInfo,
       logger,
-      user: createUser ? await createUser(input) : undefined,
+      user,
       started: Date.now(),
     }
 
