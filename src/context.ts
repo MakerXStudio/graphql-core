@@ -1,7 +1,7 @@
 import type { Logger } from '@makerx/node-common'
-import { randomUUID } from 'crypto'
-import type { Request } from 'express'
 import { pick } from 'es-toolkit/compat'
+import type { Request } from 'express'
+import { buildBaseRequestInfo } from './request-utils'
 import { User } from './User'
 
 export interface GraphQLContext<
@@ -22,6 +22,7 @@ export interface BaseRequestInfo extends Record<string, unknown> {
   protocol: 'http' | 'https' | 'ws'
   host: string
   method: string
+  baseUrl: string
   url: string
   origin: string
   referer?: string
@@ -82,20 +83,6 @@ export interface CreateContextConfig<TContext extends AnyGraphqlContext = GraphQ
   requestInfoToLog?: Array<keyof RequestInfo>
   augmentContext?: (context: TContext) => Record<string, unknown> | Promise<Record<string, unknown>>
 }
-
-export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
-  requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-  protocol: req.protocol as 'http' | 'https',
-  host: req.hostname ?? '',
-  method: req.method ?? '',
-  url: req.originalUrl,
-  origin: req.get('Origin') ?? '',
-  referer: req.headers.referer?.toString() ?? '',
-  arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-  clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
-  correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
-  userAgent: req.headers['user-agent']?.toString() ?? undefined,
-})
 
 export const createContextFactory = <TContext extends AnyGraphqlContext = GraphQLContext>({
   requestLogger,

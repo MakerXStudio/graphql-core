@@ -1,7 +1,6 @@
-import type { and, chain, or, race } from 'graphql-shield'
+import type { and, chain, IRules, or, race } from 'graphql-shield'
 import { allow, rule, shield } from 'graphql-shield'
-import type { IRules } from 'graphql-shield'
-import type { Primitive } from './models'
+import type { Primitive } from './type-utils'
 
 type RuleCombinator = typeof chain | typeof race | typeof or | typeof and
 // For whatever reason, graphql-shield doesn't export this type, but we can extract if from

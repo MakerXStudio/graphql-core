@@ -1,9 +1,9 @@
 import type { Logger } from '@makerx/node-common'
-import { randomUUID } from 'crypto'
 import type { IncomingMessage } from 'http'
 import { pick } from 'es-toolkit/compat'
 import { User } from '../User'
 import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo } from '../context'
+import { buildConnectRequestInfo } from '../request-utils'
 import { extractTokenFromConnectionParams } from './utils'
 
 export interface SubscriptionContextInput {
@@ -37,21 +37,9 @@ export const createSubscriptionContextFactory = <TContext extends GraphQLContext
   return async (input: SubscriptionContextInput) => {
     const { connectRequest: req, claims } = input
 
-    const xForwardedFor = req.headers['x-forwarded-for']
-    const host = Array.isArray(xForwardedFor) ? xForwardedFor[0] : (xForwardedFor ?? req.headers.host)
-
     // build request info from the connect request and socket
     const requestInfo: RequestInfo = {
-      requestId: req.headers['x-request-id']?.toString() ?? randomUUID(),
-      protocol: 'ws',
-      host: host ?? '',
-      method: req.method ?? '',
-      url: req.url ?? '',
-      origin: req.headers['origin'] ?? '',
-      referer: req.headers.referer?.toString() ?? '',
-      arrLogId: req.headers['x-arr-log-id']?.toString() ?? undefined,
-      clientIp: req.headers['x-forwarded-for']?.toString() ?? req.socket.remoteAddress,
-      correlationId: req.headers['x-correlation-id']?.toString() ?? undefined,
+      ...buildConnectRequestInfo(req),
       ...augmentRequestInfo?.(input),
     }
 
