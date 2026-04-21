@@ -179,6 +179,7 @@ describe('buildBaseRequestInfo', () => {
 
     expect(buildBaseRequestInfo(req)).toEqual({
       requestId: 'req-abc',
+      source: 'http',
       protocol: 'https',
       host: 'api.example.com:8443',
       method: 'POST',
@@ -191,6 +192,10 @@ describe('buildBaseRequestInfo', () => {
       correlationId: 'corr-xyz',
       userAgent: 'test-agent/1.0',
     })
+  })
+
+  it('sets source to "http"', () => {
+    expect(buildBaseRequestInfo(makeExpressRequest()).source).toBe('http')
   })
 
   it('generates a uuid for requestId when x-request-id absent', () => {
@@ -240,6 +245,7 @@ describe('buildBaseRequestInfo', () => {
 
     const info = buildBaseRequestInfo(req)
     expect(info).toMatchObject({
+      source: 'http',
       protocol: 'http',
       host: 'localhost',
       baseUrl: 'http://localhost:4000',
@@ -256,7 +262,7 @@ describe('buildBaseRequestInfo', () => {
 })
 
 describe('buildConnectRequestInfo', () => {
-  it('builds full request info with ws protocol', () => {
+  it('builds full request info with wss protocol when encrypted', () => {
     const req = makeIncomingMessage({
       method: 'GET',
       url: '/graphql',
@@ -276,7 +282,8 @@ describe('buildConnectRequestInfo', () => {
 
     expect(buildConnectRequestInfo(req)).toEqual({
       requestId: 'req-ws',
-      protocol: 'ws',
+      source: 'subscription',
+      protocol: 'wss',
       host: 'api.example.com',
       method: 'GET',
       baseUrl: 'https://api.example.com',
@@ -288,6 +295,33 @@ describe('buildConnectRequestInfo', () => {
       correlationId: 'corr-ws',
       userAgent: 'ws-client/1.0',
     })
+  })
+
+  it('sets source to "subscription"', () => {
+    const req = makeIncomingMessage({ headers: { host: 'example.com' } })
+    expect(buildConnectRequestInfo(req).source).toBe('subscription')
+  })
+
+  it('emits ws protocol when socket is unencrypted and no x-forwarded-proto', () => {
+    const req = makeIncomingMessage({ encrypted: false, headers: { host: 'example.com' } })
+    expect(buildConnectRequestInfo(req).protocol).toBe('ws')
+  })
+
+  it('emits wss protocol when x-forwarded-proto is https (normalizing to wss)', () => {
+    const req = makeIncomingMessage({ headers: { 'x-forwarded-proto': 'https', host: 'example.com' } })
+    expect(buildConnectRequestInfo(req).protocol).toBe('wss')
+  })
+
+  it('emits wss protocol when x-forwarded-proto is wss', () => {
+    const req = makeIncomingMessage({ headers: { 'x-forwarded-proto': 'wss', host: 'example.com' } })
+    expect(buildConnectRequestInfo(req).protocol).toBe('wss')
+  })
+
+  it('baseUrl uses http(s) scheme even when protocol is ws/wss', () => {
+    const req = makeIncomingMessage({ encrypted: true, headers: { host: 'example.com' } })
+    const info = buildConnectRequestInfo(req)
+    expect(info.protocol).toBe('wss')
+    expect(info.baseUrl).toBe('https://example.com')
   })
 
   it('falls back to headers.host for host field when x-forwarded-host absent', () => {
@@ -315,6 +349,7 @@ describe('buildConnectRequestInfo', () => {
 
     const info = buildConnectRequestInfo(req)
     expect(info).toMatchObject({
+      source: 'subscription',
       protocol: 'ws',
       host: 'localhost:4000',
       baseUrl: 'http://localhost:4000',

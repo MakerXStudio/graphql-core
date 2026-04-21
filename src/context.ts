@@ -1,7 +1,7 @@
 import type { Logger } from '@makerx/node-common'
 import { pick } from 'es-toolkit/compat'
 import type { Request } from 'express'
-import { buildBaseRequestInfo } from './request-utils'
+import { buildBaseRequestInfo, type BaseRequestInfo } from './request-utils'
 import { User } from './User'
 
 export interface GraphQLContext<
@@ -16,21 +16,6 @@ export interface GraphQLContext<
 }
 
 export type AnyGraphqlContext = GraphQLContext<any, any, any>
-
-export interface BaseRequestInfo extends Record<string, unknown> {
-  requestId: string
-  protocol: 'http' | 'https' | 'ws'
-  host: string
-  method: string
-  baseUrl: string
-  url: string
-  origin: string
-  referer?: string
-  correlationId?: string
-  arrLogId?: string
-  clientIp?: string
-  userAgent?: string
-}
 
 export interface LambdaContext {
   functionName?: string

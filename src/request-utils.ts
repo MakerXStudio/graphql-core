@@ -2,7 +2,22 @@ import { randomUUID } from 'crypto'
 import type { Request } from 'express'
 import type { IncomingMessage } from 'http'
 import type { TLSSocket } from 'tls'
-import type { BaseRequestInfo } from './context'
+
+export interface BaseRequestInfo extends Record<string, unknown> {
+  requestId: string
+  source: 'http' | 'subscription'
+  protocol: 'http' | 'https' | 'ws' | 'wss'
+  host: string
+  method: string
+  baseUrl: string
+  url: string
+  origin: string
+  referer?: string
+  correlationId?: string
+  arrLogId?: string
+  clientIp?: string
+  userAgent?: string
+}
 
 const isDefaultPort = (protocol: string, port: number | undefined): boolean =>
   port == null || (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443)
@@ -22,6 +37,13 @@ const parseHostHeader = (hostHeader: string): { hostname: string; port: number |
 
 const isEncryptedSocket = (req: IncomingMessage): boolean => 'encrypted' in req.socket && (req.socket as TLSSocket).encrypted === true
 
+const isEncryptedConnect = (req: IncomingMessage): boolean => {
+  const forwarded = firstHeaderValue(req.headers['x-forwarded-proto'])?.toLowerCase()
+  if (forwarded === 'https' || forwarded === 'wss') return true
+  if (forwarded === 'http' || forwarded === 'ws') return false
+  return isEncryptedSocket(req)
+}
+
 const resolveForwardedHost = (req: IncomingMessage): string | undefined => firstHeaderValue(req.headers['x-forwarded-host'])
 
 export const requestBaseUrl = (req: Request): string => {
@@ -31,11 +53,10 @@ export const requestBaseUrl = (req: Request): string => {
 }
 
 export const connectRequestBaseUrl = (req: IncomingMessage): string => {
-  const protocol = firstHeaderValue(req.headers['x-forwarded-proto']) ?? (isEncryptedSocket(req) ? 'https' : 'http')
   const hostHeader = resolveForwardedHost(req) ?? req.headers.host
   if (!hostHeader) throw new Error('Cannot determine base URL from websocket connect request')
   const { hostname, port } = parseHostHeader(hostHeader)
-  return formatBaseUrl(protocol, hostname, port)
+  return formatBaseUrl(isEncryptedConnect(req) ? 'https' : 'http', hostname, port)
 }
 
 const buildSharedRequestInfo = (req: IncomingMessage) => ({
@@ -51,6 +72,7 @@ const buildSharedRequestInfo = (req: IncomingMessage) => ({
 
 export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
   ...buildSharedRequestInfo(req),
+  source: 'http',
   protocol: req.protocol as 'http' | 'https',
   host: resolveForwardedHost(req) ?? req.hostname ?? '',
   baseUrl: requestBaseUrl(req),
@@ -59,7 +81,8 @@ export const buildBaseRequestInfo = (req: Request): BaseRequestInfo => ({
 
 export const buildConnectRequestInfo = (req: IncomingMessage): BaseRequestInfo => ({
   ...buildSharedRequestInfo(req),
-  protocol: 'ws',
+  source: 'subscription',
+  protocol: isEncryptedConnect(req) ? 'wss' : 'ws',
   host: resolveForwardedHost(req) ?? req.headers.host ?? '',
   baseUrl: connectRequestBaseUrl(req),
   url: req.url ?? '',
