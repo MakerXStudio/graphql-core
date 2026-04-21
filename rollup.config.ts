@@ -5,7 +5,7 @@ import json from '@rollup/plugin-json'
 import type { RollupOptions } from 'rollup'
 
 const config: RollupOptions = {
-  input: ['src/index.ts', 'src/testing.ts', 'src/subscriptions/index.ts'],
+  input: ['src/index.ts', 'src/shield.ts', 'src/subscriptions/index.ts'],
   output: [
     {
       dir: 'dist',

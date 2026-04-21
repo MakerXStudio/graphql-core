@@ -38,7 +38,6 @@
     "@makerx/node-common": "^1.5.0"
   },
   "peerDependencies": {
-    "@apollo/client": "*",
     "es-toolkit": ">=1",
     "express": "*",
     "graphql": "*",
@@ -47,9 +46,6 @@
     "ws": "*"
   },
   "peerDependenciesMeta": {
-    "@apollo/client": {
-      "optional": true
-    },
     "graphql-ws": {
       "optional": true
     },
@@ -58,7 +54,6 @@
     }
   },
   "devDependencies": {
-    "@apollo/client": "^3.8.10",
     "@eslint/eslintrc": "3.3.1",
     "@eslint/js": "9.36.0",
     "@makerx/eslint-config": "4.2.0",
