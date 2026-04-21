@@ -12,34 +12,36 @@ export interface SubscriptionContextInput {
   claims?: JwtPayload
 }
 
-export type CreateSubscriptionUser<T = User | undefined> = (input: SubscriptionContextInput) => Promise<T>
+export type CreateSubscriptionUser<T = User | undefined> = (input: SubscriptionContextInput) => Promise<T> | T
 export type CreateSubscriptionContext<TContext = GraphQLContext> = (input: SubscriptionContextInput) => Promise<TContext>
 export type AugmentSubscriptionRequestInfo = (input: SubscriptionContextInput) => Record<string, unknown>
 
-export interface CreateSubscriptionContextConfig<
+// `createUser` is optional when TUser is compatible with the default `User | undefined`
+// (i.e. defaultCreateUser can satisfy it), and required when TUser is narrower.
+export type CreateSubscriptionContextConfig<
   TUser = User | undefined,
   TAugment extends Record<string, unknown> = Record<string, never>,
-> {
-  requestLogger: CreateRequestLogger<TUser> | Logger
+  TLogger extends Logger = Logger,
+> = {
+  requestLogger: CreateRequestLogger<TUser, TLogger> | TLogger
   augmentRequestInfo?: AugmentSubscriptionRequestInfo
   claimsToLog?: string[]
-  createUser?: CreateSubscriptionUser<TUser>
   requestInfoToLog?: Array<keyof RequestInfo>
-  augmentContext?: (context: GraphQLContext<Logger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
-}
+  augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
+} & ([User | undefined] extends [TUser] ? { createUser?: CreateSubscriptionUser<TUser> } : { createUser: CreateSubscriptionUser<TUser> })
 
 export const createSubscriptionContextFactory = <
   TUser = User | undefined,
   TAugment extends Record<string, unknown> = Record<string, never>,
->({
-  requestLogger,
-  augmentRequestInfo,
-  claimsToLog,
-  createUser = defaultCreateUser as CreateSubscriptionUser<TUser>,
-  requestInfoToLog,
-  augmentContext,
-}: CreateSubscriptionContextConfig<TUser, TAugment>): CreateSubscriptionContext<GraphQLContext<Logger, RequestInfo, TUser> & TAugment> => {
-  // the function that creates the GraphQL context
+  TLogger extends Logger = Logger,
+>(
+  config: CreateSubscriptionContextConfig<TUser, TAugment, TLogger>,
+): CreateSubscriptionContext<GraphQLContext<TLogger, RequestInfo, TUser> & TAugment> => {
+  const { requestLogger, augmentRequestInfo, claimsToLog, requestInfoToLog, augmentContext } = config
+  // The conditional type on CreateSubscriptionContextConfig guarantees `createUser` is provided
+  // when TUser is narrower than `User | undefined`, so defaulting is sound here.
+  const createUser = (config.createUser ?? defaultCreateUser) as CreateSubscriptionUser<TUser>
+
   return async (input: SubscriptionContextInput) => {
     const { connectRequest: req, claims } = input
 
@@ -52,7 +54,7 @@ export const createSubscriptionContextFactory = <
     const user = await createUser(input)
 
     // create request logger
-    let logger: Logger
+    let logger: TLogger
     if (typeof requestLogger === 'function') {
       // build request logger metadata
       const requestLoggerMetadata: Record<string, unknown> = {}
@@ -64,7 +66,7 @@ export const createSubscriptionContextFactory = <
       logger = requestLogger(requestLoggerMetadata, user)
     } else logger = requestLogger
 
-    const graphqlContext: GraphQLContext<Logger, RequestInfo, TUser> = {
+    const graphqlContext: GraphQLContext<TLogger, RequestInfo, TUser> = {
       requestInfo,
       logger,
       user,
@@ -73,7 +75,7 @@ export const createSubscriptionContextFactory = <
 
     const augmentedGraphQLContext = augmentContext ? { ...graphqlContext, ...(await augmentContext(graphqlContext)) } : graphqlContext
 
-    return augmentedGraphQLContext as GraphQLContext<Logger, RequestInfo, TUser> & TAugment
+    return augmentedGraphQLContext as GraphQLContext<TLogger, RequestInfo, TUser> & TAugment
   }
 }
 

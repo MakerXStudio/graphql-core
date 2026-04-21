@@ -10,10 +10,10 @@ Note: See explanation on \*Express peer dependency below.
 
 `createContextFactory` returns a function that creates your GraphQL context using a standard (extensible) representation, including:
 
-- `logger`: a logger instance to use downstream of resolvers, usually logging some request metadata to assist correlating log entries (for example the X-Correlation-Id header value)
-- `requestInfo`: useful request info, for example to define per-request behaviour (multi-tenant apps), pass through correlation headers to downstream services etc
-- `user`: an object representing the user or system identity (see definition below, defaults to creating a `User` based on JWT claims)
-- anything else you wish to add to the context
+- `logger`: a logger instance to use downstream of resolvers, built by your `requestLogger` factory, which receives both the resolved request metadata and the resolved `user` so you can enrich log output with user-derived fields (see [Request logger](#request-logger))
+- `requestInfo`: useful request info — `source` (`http` or `subscription`), `protocol` (`http`/`https`/`ws`/`wss`), `host`, `baseUrl`, `url`, correlation/client headers, etc. Use it for per-request behaviour (multi-tenant apps), passing correlation headers downstream, etc. See [Request info](#request-info)
+- `user`: an object representing the user or system identity (see [User](#user), defaults to a `User` built from JWT claims when you opt in with `defaultCreateUser`)
+- anything else you wish to add to the context via `augmentContext`
 
 ### Step 1 - Define your context + creation
 
@@ -29,14 +29,16 @@ type ExtraContext = {
 // configure the createContext function
 // TUser is inferred from `createUser`, TAugment is inferred from `augmentContext`'s return type
 export const createContext = createContextFactory({
-  // set the keys of the user claims (JWT payload) we want added to the request metadata passed to the requestLogger factory
+  // keys of the user claims (JWT payload) to include in the request metadata passed to the requestLogger factory
   claimsToLog: ['oid', 'aud', 'tid', 'azp', 'iss', 'scp', 'roles'],
-  // set the keys of the request info we want added to the request metadata passed to the requestLogger factory
+  // keys of the request info to include in the request metadata passed to the requestLogger factory
   requestInfoToLog: ['origin', 'requestId', 'correlationId'],
-  // use a winston child logger to add metadata to log output
-  requestLogger: (requestMetadata) => logger.child(requestMetadata),
-  // provide a createUser function (or omit to use the default User based on JWT claims)
-  createUser: defaultCreateUser,
+  // build the per-request logger; receives the request metadata and the resolved user
+  // e.g. enrich log output with user-derived fields like multi-tenant `instance`
+  requestLogger: (requestMetadata, user) => logger.child({ ...requestMetadata, instance: user?.instance }),
+  // resolve the user for each request — optional; omit to use the default User-from-JWT behaviour
+  // (required when you supply a narrower TUser generic)
+  createUser: async ({ claims }) => new AppUser(claims),
   // build the rest of the app context — annotate the return type to lock in inference
   augmentContext: (context): ExtraContext => {
     const services = createServices(context)
@@ -83,6 +85,51 @@ const graphqlServer = createServer({
   ...yogaServerConfig,
   context: ({ req }) => createContext({ req, claims: req.user }),
 })
+```
+
+## Request info
+
+`context.requestInfo` is built for every request — both HTTP and websocket subscription connects — so downstream code can distinguish sources, rebuild URLs, pass through correlation headers, etc.
+
+| Field           | Description                                                                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requestId`     | `x-request-id` header if present, otherwise a freshly generated UUID.                                                                                                         |
+| `source`        | `'http'` for regular requests, `'subscription'` for websocket connects.                                                                                                       |
+| `protocol`      | `'http'` / `'https'` for HTTP, `'ws'` / `'wss'` for subscriptions (resolved via `x-forwarded-proto` or TLS socket encryption).                                                |
+| `host`          | Prefers `x-forwarded-host`, falls back to the `Host` header / `req.hostname`.                                                                                                 |
+| `baseUrl`       | Fully-qualified origin (`scheme://host[:port]`) with default ports stripped. For subscriptions the scheme is normalised to `http(s)` so the value composes with relative URLs. |
+| `url`           | `req.originalUrl` for HTTP, `req.url` for subscription connects.                                                                                                              |
+| `origin`        | `Origin` header.                                                                                                                                                              |
+| `referer`       | `Referer` header.                                                                                                                                                             |
+| `correlationId` | `x-correlation-id` header.                                                                                                                                                    |
+| `arrLogId`      | `x-arr-log-id` header (Azure Front Door / ARR).                                                                                                                               |
+| `clientIp`      | First value from `x-forwarded-for`, falling back to `socket.remoteAddress`.                                                                                                   |
+| `userAgent`     | `User-Agent` header.                                                                                                                                                          |
+
+You can add more via `augmentRequestInfo(input)`. Lambda deployments also get `functionName` and `awsRequestId` when a `LambdaContext` is supplied.
+
+> **Note on `host` in v3:** `requestInfo.host` now resolves consistently across Express `Request` and the websocket connect `IncomingMessage` — both paths always trust the `x-forwarded-host` / `Host` headers rather than Express's `req.hostname`. As a result, when a proxy forwards a port in the `Host` / `x-forwarded-host` header, that port now appears on `host` (pre-v3 Express requests used `req.hostname`, which strips the port).
+
+Helpers are exported for custom wiring: `buildBaseRequestInfo(req)` (Express), `buildConnectRequestInfo(req)` (websocket `IncomingMessage`), and `requestBaseUrl` / `connectRequestBaseUrl`.
+
+## Request logger
+
+The `requestLogger` config accepts either a pre-built `Logger` or a factory `(requestMetadata, user) => Logger`.
+
+The factory form runs per request and receives:
+
+- `requestMetadata` — an object containing `request` (the subset of `requestInfo` selected by `requestInfoToLog`) and `user` (the subset of claims selected by `claimsToLog`)
+- `user` — the resolved `user` value returned by `createUser` (typed as your `TUser`)
+
+This lets you enrich log output with fields derived from the resolved user, for example a multi-tenant instance id or an internal user id from your database, that aren't present on the raw JWT claims:
+
+```ts
+requestLogger: (requestMetadata, user) =>
+  logger.child({
+    ...requestMetadata,
+    instance: user?.instance,
+    userId: user?.id,
+  }),
 ```
 
 ## User
@@ -144,7 +191,9 @@ This library includes a `subscriptions` module to provide simple setup using the
    ```ts
    type ExtraContext = { services: Services; dataSource: DataSource; dataLoaders: DataLoaders }
 
-   const augmentContext = (context: GraphQLContextBase<Logger, RequestInfo, AppUser | undefined>): ExtraContext => {
+   // the `context` arg is typed `GraphQLContext<Logger, RequestInfo, AppUser | undefined>` here —
+   // TUser flows through from `createUser`, so just annotate the return type and let inference do the rest
+   const augmentContext = (context: GraphQLContext<Logger, RequestInfo, AppUser | undefined>): ExtraContext => {
      const services = createServices(context)
      const dataLoaders = createDataLoaders()
      return { services, dataSource, dataLoaders }
@@ -154,7 +203,7 @@ This library includes a `subscriptions` module to provide simple setup using the
    const createContext = createContextFactory({
      claimsToLog,
      requestInfoToLog,
-     requestLogger: (requestMetadata) => logger.child(requestMetadata),
+     requestLogger: (requestMetadata, user) => logger.child({ ...requestMetadata, instance: user?.instance }),
      createUser: ({ claims, req }) => findUpdateOrCreateUser(claims, req.headers.authorization?.substring(7)),
      augmentContext,
    })
@@ -163,7 +212,7 @@ This library includes a `subscriptions` module to provide simple setup using the
    const createSubscriptionContext = createSubscriptionContextFactory({
      claimsToLog,
      requestInfoToLog,
-     requestLogger: (requestMetadata) => logger.child(requestMetadata),
+     requestLogger: (requestMetadata, user) => logger.child({ ...requestMetadata, instance: user?.instance }),
      createUser: ({ claims, connectionParams }) => findUpdateOrCreateUser(claims, extractTokenFromConnectionParams(connectionParams)),
      augmentContext,
    })
