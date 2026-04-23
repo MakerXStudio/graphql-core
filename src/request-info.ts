@@ -56,11 +56,27 @@ const resolveHostAndPort = (req: IncomingMessage, fallbackHostname?: string): { 
   return { host: fallbackHostname ?? '', port: undefined }
 }
 
+/**
+ * Builds the base URL (`protocol://host[:port]`) for an Express HTTP request, using the request's
+ * protocol and resolving the host/port from forwarding headers with the Express hostname as fallback.
+ * The port is omitted when it matches the default for the protocol (80 for http, 443 for https).
+ * @param req The Express request.
+ * @returns The base URL string.
+ */
 export const requestBaseUrl = (req: Request): string => {
   const { host, port } = resolveHostAndPort(req, req.hostname)
   return formatBaseUrl(req.protocol, host, port)
 }
 
+/**
+ * Builds the base URL (`http(s)://host[:port]`) for a raw WebSocket upgrade (connect) request.
+ * Returns an `https` URL when the connection is TLS-encrypted or `x-forwarded-proto` indicates a
+ * secure scheme, otherwise `http`. Throws if no host can be determined from the request headers,
+ * since upgrade requests have no Express `hostname` fallback.
+ * @param req The incoming upgrade request.
+ * @returns The base URL string.
+ * @throws Error when the host cannot be resolved from the request.
+ */
 export const connectRequestBaseUrl = (req: IncomingMessage): string => {
   const { host, port } = resolveHostAndPort(req)
   if (!host) throw new Error('Cannot determine base URL from websocket connect request')
