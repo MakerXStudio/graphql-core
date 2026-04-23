@@ -91,21 +91,21 @@ const graphqlServer = createServer({
 
 `context.requestInfo` is built for every request — both HTTP and websocket subscription connects — so downstream code can distinguish sources, rebuild URLs, pass through correlation headers, etc.
 
-| Field           | Description                                                                                                                                                                   |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `requestId`     | `x-request-id` header if present, otherwise a freshly generated UUID.                                                                                                         |
-| `source`        | `'http'` for regular requests, `'subscription'` for websocket connects.                                                                                                       |
-| `protocol`      | `'http'` / `'https'` for HTTP, `'ws'` / `'wss'` for subscriptions (resolved via `x-forwarded-proto` or TLS socket encryption).                                                |
-| `host`          | Hostname only (no port). Prefers `x-forwarded-host`, falls back to the `Host` header, then `req.hostname` (Express only).                                                     |
-| `port`          | Port parsed from `x-forwarded-host` / `Host` header when present; `undefined` otherwise.                                                                                      |
+| Field           | Description                                                                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `requestId`     | `x-request-id` header if present, otherwise a freshly generated UUID.                                                                                                          |
+| `source`        | `'http'` for regular requests, `'subscription'` for websocket connects.                                                                                                        |
+| `protocol`      | `'http'` / `'https'` for HTTP, `'ws'` / `'wss'` for subscriptions (resolved via `x-forwarded-proto` or TLS socket encryption).                                                 |
+| `host`          | Hostname only (no port). Prefers `x-forwarded-host`, falls back to the `Host` header, then `req.hostname` (Express only).                                                      |
+| `port`          | Port parsed from `x-forwarded-host` / `Host` header when present; `undefined` otherwise.                                                                                       |
 | `baseUrl`       | Fully-qualified origin (`scheme://host[:port]`) with default ports stripped. For subscriptions the scheme is normalised to `http(s)` so the value composes with relative URLs. |
-| `url`           | `req.originalUrl` for HTTP, `req.url` for subscription connects.                                                                                                              |
-| `origin`        | `Origin` header.                                                                                                                                                              |
-| `referer`       | `Referer` header.                                                                                                                                                             |
-| `correlationId` | `x-correlation-id` header.                                                                                                                                                    |
-| `arrLogId`      | `x-arr-log-id` header (Azure Front Door / ARR).                                                                                                                               |
-| `clientIp`      | First value from `x-forwarded-for`, falling back to `socket.remoteAddress`.                                                                                                   |
-| `userAgent`     | `User-Agent` header.                                                                                                                                                          |
+| `url`           | `req.originalUrl` for HTTP, `req.url` for subscription connects.                                                                                                               |
+| `origin`        | `Origin` header.                                                                                                                                                               |
+| `referer`       | `Referer` header.                                                                                                                                                              |
+| `correlationId` | `x-correlation-id` header.                                                                                                                                                     |
+| `arrLogId`      | `x-arr-log-id` header (Azure Front Door / ARR).                                                                                                                                |
+| `clientIp`      | First value from `x-forwarded-for`, falling back to `socket.remoteAddress`.                                                                                                    |
+| `userAgent`     | `User-Agent` header.                                                                                                                                                           |
 
 You can add more via `augmentRequestInfo(input)`. Lambda deployments also get `functionName` and `awsRequestId` when a `LambdaContext` is supplied.
 
@@ -161,6 +161,112 @@ const graphqlServer = createServer({
   ...config,
   context: ({ req }) => createContext({ req, claims: req.user, createUser }),
 })
+```
+
+## Shield (authorization)
+
+The `shield` module provides typed helpers around [graphql-shield](https://the-guild.dev/graphql/shield) for defining authorization middleware against your generated `Resolvers` type.
+
+`graphql-shield` is an optional peer dependency — install it only if you use this module:
+
+```sh
+npm i graphql-shield
+```
+
+### createShieldSchema
+
+Builds a shield middleware with a schema typed against your resolver map, so field-level rule wiring is checked by the TypeScript compiler.
+
+```ts
+import { Resolvers } from '../generated/types'
+import { or } from 'graphql-shield'
+import { applyMiddleware } from 'graphql-middleware'
+import { createShieldSchema, hasRoleRule, unauthorisedError } from '@makerx/graphql-core'
+
+const isCoordinator = hasRoleRule('coordinator')
+const isSystemAdmin = hasRoleRule('system-admin')
+const isAuthorisedUser = or(isCoordinator, isSystemAdmin)
+
+const shieldSchema = createShieldSchema<Resolvers>(
+  {
+    Query: {
+      '*': isAuthorisedUser,
+      user: isCoordinator,
+    },
+    Mutation: {
+      '*': isCoordinator,
+      createUser: isSystemAdmin,
+    },
+  },
+  { fallbackRule: isAuthorisedUser, fallbackError: unauthorisedError() },
+)
+
+const schema = applyMiddleware(makeExecutableSchema({ ... }), shieldSchema)
+```
+
+The `'*'` key at each object level is a fallback rule applied to any field at that level without an explicit rule.
+
+The wrapper defaults `allowExternalErrors: true`; the full shield options object (second argument) is forwarded to `shield(...)` and can override it.
+
+#### v3 breaking change: no default fallback rule
+
+Prior to v3 this wrapper defaulted `fallbackRule` to `allow` — fields not covered by the schema were open by default. v3 removes that default and the wrapper no longer makes that choice for you. Without an explicit `fallbackRule`, graphql-shield's own default (`allow`) still applies, so behaviour is unchanged when no options are passed, but if you want a deny-by-default posture you should now pass an explicit `fallbackRule` (commonly your auth-check rule) along with a `fallbackError`.
+
+The second argument also changed from a bare `ShieldRule` to the full shield options object:
+
+```ts
+// v2
+createShieldSchema<Resolvers>(schema, isAuthorisedUser)
+
+// v3
+createShieldSchema<Resolvers>(schema, { fallbackRule: isAuthorisedUser, fallbackError: unauthorisedError() })
+```
+
+### Role and scope rules
+
+Convenience builders that read `ctx.user.roles` / `ctx.user.scopes`. All use graphql-shield's `'contextual'` cache so the result is reused across fields within a request.
+
+| Helper                                   | Description                                                                   |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `hasRoleRule(role, ruleName?)`           | Passes when `user.roles` includes `role`.                                     |
+| `hasAnyRoleRule(...roles)`               | Passes when `user.roles` includes at least one of `roles`.                    |
+| `hasAnyRoleRuleWithName(name, ...roles)` | Same, with an explicit rule name / cache key for large or dynamic role lists. |
+| `hasScopeRule(scope)`                    | Passes when `user.scopes` includes `scope`.                                   |
+| `hasAnyScopeRule(...scopes)`             | Passes when `user.scopes` includes at least one of `scopes`.                  |
+
+### createRule
+
+Typed wrapper around graphql-shield's `rule(...)` for ad-hoc rules. Unlike the underlying `rule`, `createRule` types `parent`, `args` and `ctx` to your generics.
+
+```ts
+const isOwner = createRule<GraphQLContext, Record, { ownerId: string }>((parent, _, ctx) => parent.ownerId === ctx.user?.id)
+```
+
+Defaults to `'strict'` cache; pass `'contextual'` as the second argument for rules whose result depends only on `ctx`.
+
+### combineRuleWithAll
+
+Composes a rule with every rule in an existing shield schema via a combinator (`and` | `or` | `chain` | `race`). Useful for post-hoc gating — e.g. bolting a "not blocked" check onto an existing schema without touching each field:
+
+```ts
+import { chain } from 'graphql-shield'
+
+const gated = combineRuleWithAll(shieldSchema, accountNotBlocked, chain)
+```
+
+### Authorization errors
+
+The `unauthorised` module provides shared helpers for producing forbidden errors used by the shield wrapper and by resolvers.
+
+| Helper                                     | Description                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `unauthorisedError(message?)`              | Builds a `GraphQLError` with Apollo's `FORBIDDEN` extension code and HTTP 403 status.                   |
+| `throwUnauthorised(message?)`              | Throws `unauthorisedError`; return type is `never` so TypeScript narrows control flow past the call.    |
+| `permissionInvariant(condition, message?)` | Assertion helper: throws `unauthorisedError` when `condition` is false, otherwise narrows it to `true`. |
+
+```ts
+permissionInvariant(ctx.user?.id === record.ownerId, 'Only the owner can edit this record')
+// past this line, TypeScript knows the condition held
 ```
 
 ## Logging
@@ -223,7 +329,6 @@ This library includes a `subscriptions` module to provide simple setup using the
 1. Create a subscriptions server, using the ws-server cleanup function in your server lifecycle.
 
    The `useSubscriptionsServer` function sets up:
-
    - Auth token validation as part of establishing (or rejecting) the connection (behaviour defined by `verifyToken` and `requireAuth` args)
    - GraphQL context creation
    - Logging from the server `onConnect`, `onDisconnect`, `onOperation`, `onNext` and `onError` callbacks
