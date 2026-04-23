@@ -1,6 +1,6 @@
 {
   "name": "@makerx/graphql-core",
-  "version": "3.0.0-beta.1",
+  "version": "3.0.0-beta.2",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
@@ -34,10 +34,8 @@
     "test:coverage": "vitest run --coverage",
     "test:ci": "vitest run --coverage --reporter junit --outputFile test-results.xml"
   },
-  "dependencies": {
-    "@makerx/node-common": "^1.5.0"
-  },
   "peerDependencies": {
+    "@makerx/node-common": ">=1",
     "es-toolkit": ">=1",
     "express": "*",
     "graphql": "*",
@@ -57,6 +55,7 @@
     "@eslint/eslintrc": "3.3.1",
     "@eslint/js": "9.36.0",
     "@makerx/eslint-config": "4.2.0",
+    "@makerx/node-common": "^1.5.0",
     "@makerx/prettier-config": "2.0.1",
     "@makerx/ts-toolkit": "^4.0.0-beta.24",
     "@rollup/plugin-commonjs": "28.0.6",
