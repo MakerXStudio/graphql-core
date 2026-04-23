@@ -124,7 +124,7 @@ export type ShieldSchema<TResolver> = TResolver extends Primitive
  * @param role The role the user must have on `ctx.user.roles`.
  * @param ruleName Optional override for the rule's cache key. Defaults to `hasRole-${role}`.
  */
-export function hasRoleRule(role: string, ruleName?: string) {
+export function hasRoleRule(role: string, ruleName?: string): ShieldRule {
   return rule(ruleName ?? `hasRole-${role}`, { cache: 'contextual' })(
     (_, __, { user }: GraphQLContext) => user?.roles.includes(role) === true,
   )
@@ -135,7 +135,7 @@ export function hasRoleRule(role: string, ruleName?: string) {
  * Rule name is derived from the roles; use {@link hasAnyRoleRuleWithName} to supply your own.
  * @param roles The set of roles, any of which satisfies the rule.
  */
-export function hasAnyRoleRule(...roles: string[]) {
+export function hasAnyRoleRule(...roles: string[]): ShieldRule {
   return hasAnyRoleRuleWithName(`hasAnyRole-${roles.join(',')}`, ...roles)
 }
 
@@ -145,7 +145,7 @@ export function hasAnyRoleRule(...roles: string[]) {
  * @param ruleName The name (and cache key) for the rule.
  * @param roles The set of roles, any of which satisfies the rule.
  */
-export function hasAnyRoleRuleWithName(ruleName: string, ...roles: string[]) {
+export function hasAnyRoleRuleWithName(ruleName: string, ...roles: string[]): ShieldRule {
   return rule(ruleName, { cache: 'contextual' })((_, __, { user }: GraphQLContext) => {
     return user?.roles.some((role: string) => roles.includes(role)) === true
   })
@@ -155,7 +155,7 @@ export function hasAnyRoleRuleWithName(ruleName: string, ...roles: string[]) {
  * Shield rule that passes when the current user has the given scope.
  * @param scope The scope the user must have on `ctx.user.scopes`.
  */
-export function hasScopeRule(scope: string) {
+export function hasScopeRule(scope: string): ShieldRule {
   return rule(`hasScope-${scope}`, { cache: 'contextual' })((_, __, { user }: GraphQLContext) => user?.scopes.includes(scope) === true)
 }
 
@@ -163,7 +163,7 @@ export function hasScopeRule(scope: string) {
  * Shield rule that passes when the current user has at least one of the given scopes.
  * @param scopes The set of scopes, any of which satisfies the rule.
  */
-export function hasAnyScopeRule(...scopes: string[]) {
+export function hasAnyScopeRule(...scopes: string[]): ShieldRule {
   return rule(`hasAnyScope-${scopes.join(',')}`, { cache: 'contextual' })(
     (_, __, { user }: GraphQLContext) => user?.scopes.some((scope: string) => scopes.includes(scope)) === true,
   )
