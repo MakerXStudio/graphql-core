@@ -1,6 +1,6 @@
 {
   "name": "@makerx/graphql-core",
-  "version": "3.0.0-beta.4",
+  "version": "3.0.0-beta.5",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
@@ -30,6 +30,7 @@
     "build:3-build": "rollup -c --configPlugin typescript",
     "build:4-copy-pkg-json": "tstk copy-package-json -c",
     "build:5-copy-readme": "copyfiles ./README.md ./dist",
+    "build:6-check-exports": "attw --pack dist",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ci": "vitest run --coverage --reporter junit --outputFile test-results.xml"
@@ -55,12 +56,13 @@
     }
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
     "@eslint/eslintrc": "3.3.1",
     "@eslint/js": "9.36.0",
     "@makerx/eslint-config": "4.2.0",
     "@makerx/node-common": "^1.5.0",
     "@makerx/prettier-config": "2.0.1",
-    "@makerx/ts-toolkit": "^4.0.0-beta.24",
+    "@makerx/ts-toolkit": "^5.0.0-beta.0",
     "@rollup/plugin-commonjs": "28.0.6",
     "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
