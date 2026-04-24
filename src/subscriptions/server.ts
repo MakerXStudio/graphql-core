@@ -102,11 +102,11 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
           claims: ctx.extra.claims as JwtPayload | undefined,
         })
       },
-      onOperation(_ctx, _message, args) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, resolveLogger: resolveSubscriptionOperationLogger })
+      onOperation(_ctx, id, _payload, args) {
+        logSubscriptionOperation({ id, args, logLevel: operationLogLevel, resolveLogger: resolveSubscriptionOperationLogger })
       },
-      onNext(_ctx, _message, args, { data, ...result }) {
-        logSubscriptionOperation({ args, logLevel: operationLogLevel, result, resolveLogger: resolveSubscriptionOperationLogger })
+      onNext(_ctx, id, _payload, args, { data, ...result }) {
+        logSubscriptionOperation({ id, args, logLevel: operationLogLevel, result, resolveLogger: resolveSubscriptionOperationLogger })
       },
     },
     wsServer,

@@ -109,12 +109,14 @@ export const logGraphQLOperation = <TLogger extends Logger = Logger>({
 }
 
 export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
+  id,
   args,
   result,
   message,
   logLevel,
   resolveLogger,
 }: {
+  id?: string
   args: ExecutionArgs
   result?: ExecutionResult
   message?: string
@@ -132,6 +134,7 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
   logGraphQLOperation({
     message,
     type: OperationTypeNode.SUBSCRIPTION,
+    subscriptionId: id,
     operationName,
     query: print(document),
     variables: variableValues,
