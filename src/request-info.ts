@@ -3,20 +3,44 @@ import type { Request } from 'express'
 import type { IncomingMessage } from 'http'
 import type { TLSSocket } from 'tls'
 
+/**
+ * Normalised metadata describing an inbound HTTP request or WebSocket upgrade, used as a
+ * common shape for logging, tracing, and request-scoped context across HTTP and subscription
+ * transports. Extends `Record<string, unknown>` so consumers can augment it with additional
+ * fields without losing type compatibility.
+ */
 export interface BaseRequestInfo extends Record<string, unknown> {
+  /** Unique identifier for the request, taken from the `x-request-id` header or generated as a UUID. */
   requestId: string
+  /** Transport that produced the request: `http` for Express requests, `subscription` for WebSocket upgrades. */
   source: 'http' | 'subscription'
+  /** Resolved scheme of the request, accounting for TLS termination and `x-forwarded-proto`. */
   protocol: 'http' | 'https' | 'ws' | 'wss'
+  /** Hostname resolved from `x-forwarded-host`, the `host` header, or the Express hostname fallback. */
   host: string
+  /** Port resolved from the host header, omitted when it matches the default for the protocol. */
   port?: number
+  /** HTTP method (e.g. `GET`, `POST`); empty string when not provided on the underlying request. */
   method: string
+  /** Base URL in the form `protocol://host[:port]`, with default ports omitted. */
   baseUrl: string
+  /**
+   * Request path with query string (not an absolute URL), e.g. `/graphql?op=Foo`. Sourced from
+   * Express `req.originalUrl` for HTTP (preserved across router mounts/rewrites) or raw `req.url`
+   * for WebSocket upgrades. Combine with `baseUrl` to form an absolute URL.
+   */
   url: string
+  /** Value of the `origin` header, or empty string when absent. */
   origin: string
+  /** Value of the `referer` header, when present. */
   referer?: string
+  /** Value of the `x-correlation-id` header for cross-service request correlation, when present. */
   correlationId?: string
+  /** Azure Application Request Routing log id from the `x-arr-log-id` header, when present. */
   arrLogId?: string
+  /** Client IP from the first `x-forwarded-for` entry, falling back to the socket remote address. */
   clientIp?: string
+  /** Value of the `user-agent` header, when present. */
   userAgent?: string
 }
 
