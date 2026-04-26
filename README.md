@@ -236,13 +236,15 @@ Convenience builders that read `ctx.user.roles` / `ctx.user.scopes`. All use gra
 
 ### createRule
 
-Typed wrapper around graphql-shield's `rule(...)` for ad-hoc rules. Unlike the underlying `rule`, `createRule` types `parent`, `args` and `ctx` to your generics.
+Strongly typed wrapper around graphql-shield's `rule(...)`. Mirrors the underlying call signature — `createRule(name?, options?)(fn)` — but types `parent`, `args` and `ctx` on `fn` to your generics instead of `any`.
 
 ```ts
-const isOwner = createRule<GraphQLContext, Record, { ownerId: string }>((parent, _, ctx) => parent.ownerId === ctx.user?.id)
+const isOwner = createRule<GraphQLContext, { ownerId: string }>()((parent, _, ctx) => parent.ownerId === ctx.user?.id)
+
+const isAdmin = createRule<GraphQLContext>('isAdmin', { cache: 'contextual' })((_, __, ctx) => ctx.user?.roles.includes('admin') === true)
 ```
 
-Defaults to `'strict'` cache; pass `'contextual'` as the second argument for rules whose result depends only on `ctx`.
+Generics are `<TContext, TParent = unknown, TArgs = unknown>`. The `name` and `options` arguments are forwarded verbatim to graphql-shield's `rule`.
 
 ### combineRuleWithAll
 
