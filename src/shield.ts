@@ -1,3 +1,4 @@
+import type { GraphQLResolveInfo } from 'graphql'
 import type { allow, and, chain, IRules, or, race } from 'graphql-shield'
 import { rule, shield } from 'graphql-shield'
 import type { GraphQLContext } from './context'
@@ -10,29 +11,32 @@ type RuleCombinator = typeof chain | typeof race | typeof or | typeof and
 // what it does export.
 export type ShieldRule = ReturnType<(typeof allow)['getRules']>[number]
 
+type RuleConstructorOptions = NonNullable<Parameters<typeof rule>[1]>
+type RuleResult = boolean | string | Error
+type ShieldRuleFn = Parameters<ReturnType<typeof rule>>[0]
+
 /**
- * Thin typed wrapper around graphql-shield's `rule(...)` for building ad-hoc shield rules.
+ * Strongly typed wrapper around graphql-shield's `rule(...)`.
  *
- * Lets you pass a plain predicate (sync or async, or returning an `Error`) and get back a
- * {@link ShieldRule} with the `parent`, `args`, and `ctx` arguments typed to your generics —
- * graphql-shield's native `rule` types these as `any`.
- *
- * Defaults the rule's cache to `'strict'`; use `'contextual'` when the result depends only on
- * `ctx` (e.g. the current user), so it can be reused across fields in the same request.
- *
- * @param logic Predicate returning `true` to allow, `false` to deny, or an `Error` to deny with a specific error.
- * @param cache graphql-shield cache strategy. `'strict'` (default) keys on parent+args+ctx; `'contextual'` keys on ctx only.
+ * Mirrors the underlying `rule` call signature — `createRule(name?, options?)(fn)` — with the
+ * same parameter order and meanings. The only difference is that `parent`, `args`, and `ctx` on
+ * `fn` are typed via the generics instead of `any`. Returns the same {@link ShieldRule} that the
+ * underlying `rule` produces.
  *
  * Usage:
  *
- * const isOwner = createRule<GraphQLContext, { ownerId: string }>(
+ * const isOwner = createRule<GraphQLContext, { ownerId: string }>()(
  *   (parent, _, ctx) => parent.ownerId === ctx.user?.id,
  * )
+ *
+ * const isAdmin = createRule<GraphQLContext>('isAdmin', { cache: 'contextual' })(
+ *   (_, __, ctx) => ctx.user?.roles.includes('admin') === true,
+ * )
  */
-export const createRule = <TContext, TParent = unknown, TArgs = unknown>(
-  logic: (parent: TParent, args: TArgs, ctx: TContext) => boolean | Promise<boolean> | Error,
-  cache: 'contextual' | 'strict' = 'strict',
-): ShieldRule => rule({ cache })(async (parent, args, ctx) => logic(parent, args, ctx))
+export const createRule =
+  <TContext, TParent = unknown, TArgs = unknown>(name?: string | RuleConstructorOptions, options?: RuleConstructorOptions) =>
+  (fn: (parent: TParent, args: TArgs, ctx: TContext, info: GraphQLResolveInfo) => RuleResult | Promise<RuleResult>): ShieldRule =>
+    rule(name, options)(fn as ShieldRuleFn)
 
 /**
  * Combines a given rule with all existing defined rules using the provided combinator
