@@ -366,6 +366,34 @@ This library includes a `subscriptions` module to provide simple setup using the
 
 1. For authorisation, clients can include a connection parameter named `authorization` or `Authorization` using the HTTP header format `Bearer <token>`. Note: [Apollo Sandbox](https://studio.apollographql.com/sandbox/explorer) will include an `Authorization` connection parameter when you specify an HTTP `Authorization` header via the UI.
 
+### wrapSubscriptionIterator
+
+Wraps an `AsyncIterableIterator` (e.g. one returned by a pubsub `asyncIterableIterator(...)` call) with two optional behaviours:
+
+- `initialPayload` — a single event or array of events yielded before the wrapped iterator's events. Useful when a client subscribes after a state change has already happened, so they don't miss the current state while waiting for the next event.
+- `eventIsFinal` — a predicate that ends iteration eagerly when it returns `true` for an event. The final event is still yielded, then `wrapped.return()` is called to release resources. Only applied to events from the wrapped iterator, not to entries in `initialPayload`.
+
+Typical use is in a subscription resolver that needs to bridge a "current state" (cache or other persisted state lookup) with a live event stream, and close the subscription once a terminal event arrives:
+
+```ts
+const eventIsFinal = (data: BackgroundJobTopicData) =>
+  [BackgroundJobStatus.Completed, BackgroundJobStatus.Failed].includes(data.event.status)
+
+export const subscribeToBackgroundJobEvents = async (
+  args: SubscriptionBackgroundJobEventArgs,
+): Promise<AsyncIterator<BackgroundJobTopicData> & AsyncIterable<BackgroundJobTopicData>> => {
+  const initialPayload = await getJobFinishedEventFromCache(args.jobId)
+  const iterator = pubsub().asyncIterableIterator<BackgroundJobTopicData>(`${BACKGROUND_JOB_TOPIC}.${args.jobId}`)
+  return wrapSubscriptionIterator({
+    iterator,
+    initialPayload: initialPayload ? [initialPayload] : undefined,
+    eventIsFinal,
+  })
+}
+```
+
+The returned value is both an `AsyncIterator` and `AsyncIterable`, so it can be consumed via `for await` or by manual `next()` calls. `return()` and `throw()` are forwarded to the wrapped iterator when present.
+
 ## Utils
 
 - `isIntrospectionQuery`: indicates whether the query is an introspection query, based on the operation name or query content.
