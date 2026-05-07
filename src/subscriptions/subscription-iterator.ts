@@ -11,7 +11,9 @@
  * @param iterator The async iterator to wrap.
  * @param initialPayload An optional initial payload to return on the first iteration. May be a single event or an array.
  * @param eventIsFinal An optional function to determine if an event is final (and iteration should end).
- *   Note: only applied to events from the wrapped iterator, not to entries in `initialPayload`.
+ *   The full `initialPayload` is always yielded; `eventIsFinal` is only checked against its final entry, after which
+ *   the wrapped iterator is closed without ever being pulled from. For events from the wrapped iterator, every event
+ *   is checked.
  * @returns An async iterator for the event data.
  */
 export function wrapSubscriptionIterator<TEventData>({
@@ -33,6 +35,10 @@ export function wrapSubscriptionIterator<TEventData>({
 
       if (initialQueue.length > 0) {
         const value = initialQueue.shift() as TEventData
+        if (initialQueue.length === 0 && eventIsFinal && eventIsFinal(value)) {
+          done = true
+          await wrapped.return?.()
+        }
         return { done: false, value }
       }
 

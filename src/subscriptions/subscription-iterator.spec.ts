@@ -151,17 +151,43 @@ describe('wrapSubscriptionIterator', () => {
     await expect(it.throw!(err)).rejects.toBe(err)
   })
 
-  it('does not apply eventIsFinal to entries in initialPayload', async () => {
+  it('only checks eventIsFinal against the last entry of initialPayload, yielding the rest in full', async () => {
     const { iterator } = makeIterator([1, 2])
     const isFinal = vi.fn((n: number) => n === 99)
     const wrapped = wrapSubscriptionIterator({
       iterator,
-      initialPayload: [99, 100],
+      initialPayload: [99, 100, 101],
       eventIsFinal: isFinal,
     })
-    expect(await collect(wrapped)).toEqual([99, 100, 1, 2])
+    expect(await collect(wrapped)).toEqual([99, 100, 101, 1, 2])
     expect(isFinal).not.toHaveBeenCalledWith(99)
     expect(isFinal).not.toHaveBeenCalledWith(100)
+  })
+
+  it('ends iteration when the last initialPayload entry is final, without pulling from the wrapped iterator', async () => {
+    const { iterator, returnSpy } = makeIterator([1, 2, 3])
+    const nextSpy = vi.spyOn(iterator, 'next')
+    const wrapped = wrapSubscriptionIterator({
+      iterator,
+      initialPayload: [10, 99],
+      eventIsFinal: (n) => n === 99,
+    })
+    expect(await collect(wrapped)).toEqual([10, 99])
+    expect(nextSpy).not.toHaveBeenCalled()
+    expect(returnSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends iteration when a single (non-array) initialPayload is final', async () => {
+    const { iterator, returnSpy } = makeIterator([1, 2])
+    const nextSpy = vi.spyOn(iterator, 'next')
+    const wrapped = wrapSubscriptionIterator({
+      iterator,
+      initialPayload: 99,
+      eventIsFinal: (n) => n === 99,
+    })
+    expect(await collect(wrapped)).toEqual([99])
+    expect(nextSpy).not.toHaveBeenCalled()
+    expect(returnSpy).toHaveBeenCalledTimes(1)
   })
 
   it('is reusable as both AsyncIterator (manual next) and AsyncIterable (for-await)', async () => {
