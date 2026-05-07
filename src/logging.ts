@@ -1,11 +1,12 @@
 import type { Logger } from '@makerx/node-common'
 import { isLocalDev } from '@makerx/node-common'
+import { omitBy } from 'es-toolkit/compat'
 import type { ExecutionArgs, GraphQLFormattedError } from 'graphql'
 import { OperationTypeNode, print } from 'graphql'
 import type { ExecutionResult } from 'graphql-ws'
-import { omitBy } from 'es-toolkit/compat'
 import type { GraphQLContext } from './context'
-import { isIntrospectionQuery, isNil } from './utils'
+import { isIntrospectionQuery } from './operation'
+import { isNil } from './utils'
 
 type LogFunction = Logger['info']
 export type LoggerLogFunctions<T extends Logger> = {

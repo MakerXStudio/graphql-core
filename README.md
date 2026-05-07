@@ -397,6 +397,13 @@ The returned value is both an `AsyncIterator` and `AsyncIterable`, so it can be 
 ## Utils
 
 - `isIntrospectionQuery`: indicates whether the query is an introspection query, based on the operation name or query content.
+- `extractAnonymousOperationName`: derives a synthetic operation name from a query source that has no explicit name, by combining the operation type with the first top-level selection — handy for logging/observability when clients send anonymous operations. Returns `undefined` if no top-level field can be found.
+
+  ```ts
+  extractAnonymousOperationName('{ users { id } }') // 'query users'
+  extractAnonymousOperationName('mutation { createUser { id } }') // 'mutation createUser'
+  extractAnonymousOperationName('subscription { onUpdate { id } }') // 'subscription onUpdate'
+  ```
 
 ## \*Express peer dependency
 

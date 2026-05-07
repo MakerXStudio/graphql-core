@@ -1,5 +1,6 @@
 export * from './context'
 export * from './logging'
+export * from './operation'
 export * from './request-info'
 export * from './schema-util'
 export * from './type-utils'

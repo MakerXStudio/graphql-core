@@ -1,6 +1,6 @@
 {
   "name": "@makerx/graphql-core",
-  "version": "3.0.0-beta.8",
+  "version": "3.0.0",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
@@ -62,7 +62,7 @@
     "@makerx/eslint-config": "4.2.0",
     "@makerx/node-common": "^1.5.0",
     "@makerx/prettier-config": "2.0.1",
-    "@makerx/ts-toolkit": "^5.0.0-beta.0",
+    "@makerx/ts-toolkit": "^5.0.0-beta.1",
     "@rollup/plugin-commonjs": "29.0.2",
     "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
