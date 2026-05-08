@@ -1,6 +1,6 @@
 {
   "name": "@makerx/graphql-core",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
@@ -36,6 +36,7 @@
     "test:ci": "vitest run --coverage --reporter junit --outputFile test-results.xml"
   },
   "peerDependencies": {
+    "@graphql-typed-document-node/core": ">=3.2.0",
     "@makerx/node-common": ">=1",
     "es-toolkit": ">=1",
     "express": ">=4",

@@ -6,7 +6,7 @@ import { isAbsolute } from 'node:path'
 import type { RollupOptions } from 'rollup'
 
 const config: RollupOptions = {
-  input: ['src/index.ts', 'src/shield.ts', 'src/subscriptions/index.ts'],
+  input: ['src/index.ts', 'src/shield.ts', 'src/subscriptions/index.ts', 'src/testing/index.ts'],
   output: [
     {
       dir: 'dist',
