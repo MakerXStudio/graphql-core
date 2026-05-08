@@ -10,6 +10,7 @@ const config: TsToolkitConfig = {
       '.': 'index.ts',
       './shield': 'shield.ts',
       './subscriptions': 'subscriptions/index.ts',
+      './testing': 'testing/index.ts',
     },
   },
 }

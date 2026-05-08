@@ -405,6 +405,104 @@ The returned value is both an `AsyncIterator` and `AsyncIterable`, so it can be 
   extractAnonymousOperationName('subscription { onUpdate { id } }') // 'subscription onUpdate'
   ```
 
+## GraphQL test helpers
+
+The `@makerx/graphql-core/testing` submodule provides helpers for running GraphQL operations directly against a schema, without spinning up an HTTP or websocket server.
+
+Bypassing the transport layer supports complete control over JWT payloads and other operation context inputs required to set up complex test scenarios.
+
+This complements the `@makerx/graphql-apollo-server/testing` module, which exports `buildExecuteOperation` for running queries and mutations directly against an `ApolloServer` instance. Subscriptions normally flow over websockets via [graphql-ws](https://the-guild.dev/graphql/ws), so they need their own helper that calls `graphql.subscribe` directly against the schema.
+
+### buildSubscribeOperation
+
+`buildSubscribeOperation` accepts a `GraphQLSchema` (or async schema factory) and a context creation function and returns a `subscribeOperation` function which:
+
+- is strongly typed to the GraphQL context
+- accepts `TypedDocumentNode` subscriptions to provide strong operation typing
+- forwards any additional arguments to the supplied context creation function
+- returns the subscription's `AsyncIterableIterator<ExecutionResult<TData>>` so tests can consume events via `for await` or manual `next()` calls
+- throws if the subscription fails to produce an iterator (e.g. a validation error), surfacing the underlying errors
+
+The shape of the context creation function — and the JWT/user factories used to drive it — depends on your GraphQL implementation, so the example below illustrates one common pattern using [Vitest test contexts](https://vitest.dev/guide/test-context), matching the [`buildExecuteOperation`](https://github.com/MakerXStudio/graphql-apollo-server#apollo-server-test-helpers) examples for queries and mutations.
+
+#### Vitest GraphQL context example
+
+Note: extend auth context (e.g. `buildJwt`, `buildUserJwt`) and other context as required — see the [graphql-apollo-server test helper docs](https://github.com/MakerXStudio/graphql-apollo-server#vitest-auth-context-example) for a complete auth fixture example.
+
+`test/graphql.ts`
+
+```ts
+import { buildSubscribeOperation } from '@makerx/graphql-core/testing'
+import { test as baseTest } from './auth'
+
+const createContext = async (jwtPayload?: JwtPayload): Promise<GraphQLContext> => {
+  const user = await findUpdateOrCreateUser(jwtPayload, randomUUID())
+  const baseContext: BaseContext = { user, logger, requestInfo, started: Date.now() }
+  const extraContext = await augmentContext(baseContext)
+  return { ...baseContext, ...extraContext }
+}
+
+export const test = baseTest
+  .extend('schema', { scope: 'worker' }, async ({}) => createSchema())
+  .extend('backgroundJobs', { scope: 'worker' }, backgroundJobsFixture)
+  .extend('executeOperation', { scope: 'worker' }, async ({ schema }, { onCleanup }) => {
+    const server = new ApolloServer<GraphQLContext>({ schema })
+    onCleanup(() => server.stop())
+    return buildExecuteOperation(server, createContext)
+  })
+  .extend('subscribeOperation', { scope: 'worker' }, async ({ schema }) => {
+    return buildSubscribeOperation(schema, createContext)
+  })
+```
+
+#### job-status.subscription.test.ts
+
+The test below uses the `graphql` template-literal tag from [GraphQL-Codegen](https://the-guild.dev/graphql/codegen/docs/getting-started) to produce strongly typed operations.
+
+```ts
+import { describe, expect } from 'vitest'
+import { graphql } from './gql'
+import { test } from '../../../test/graphql'
+
+const jobStatusSubscription = graphql(`
+  subscription JobStatus($jobId: ID!) {
+    jobStatus(jobId: $jobId) {
+      jobId
+      status
+    }
+  }
+`)
+
+describe('jobStatus subscription operation', () => {
+  test('anonymous subscribes fail', async ({ subscribeOperation }) => {
+    await expect(subscribeOperation({ subscription: jobStatusSubscription, variables: { jobId: 'job-1' } })).rejects.toThrow(
+      /Not authenticated/,
+    )
+  })
+
+  test('authenticated subscribers receive events until terminal status', async ({ subscribeOperation, buildUserJwt }) => {
+    const jwt = buildUserJwt()
+    const jobId = randomUUID()
+
+    const iterator = await subscribeOperation({ subscription: jobStatusSubscription, variables: { jobId } }, jwt)
+
+    // app-specific: trigger the events your subscription resolves over
+    // await addJob('demo', { demoPayload: 'subscription-test' }, { jobId })
+
+    const events: JobStatusSubscription[] = []
+    for await (const result of iterator) {
+      if (result.data) events.push(result.data)
+    }
+
+    expect(events.at(-1)?.jobStatus.status).toBe('Completed')
+  })
+})
+```
+
+The first argument is a `TypedSubscribeRequest` (`subscription`, `variables`, `operationName`); any further arguments are forwarded verbatim to the context creation function — in the example above, the optional `JwtPayload` produced by `buildUserJwt()`.
+
+When pairing this helper with [`wrapSubscriptionIterator`](#wrapsubscriptioniterator), `eventIsFinal` will close the subscription once a terminal event arrives, ending the `for await` loop above without manual cleanup.
+
 ## \*Express peer dependency
 
 ApolloServer v3 standardises on the Express request representation.
