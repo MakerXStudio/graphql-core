@@ -462,7 +462,7 @@ The test below uses the `graphql` template-literal tag from [GraphQL-Codegen](ht
 ```ts
 import { describe, expect } from 'vitest'
 import { graphql } from './gql'
-import { test } from './graphql'
+import { test } from '../../../test/graphql'
 
 const jobStatusSubscription = graphql(`
   subscription JobStatus($jobId: ID!) {
