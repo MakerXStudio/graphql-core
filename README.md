@@ -370,8 +370,8 @@ This library includes a `subscriptions` module to provide simple setup using the
 
 Wraps an `AsyncIterableIterator` (e.g. one returned by a pubsub `asyncIterableIterator(...)` call) with two optional behaviours:
 
-- `initialPayload` — a single event, an array of events, or a **factory** (`() => event | event[] | Promise<event | event[]>`) yielded before the wrapped iterator's events. Useful when a client subscribes after a state change has already happened, so they don't miss the current state while waiting for the next event.
-- `eventIsFinal` — a predicate that ends iteration eagerly when it returns `true` for an event. The final event is still yielded, then `wrapped.return()` is called to release resources. Only applied to events from the wrapped iterator, not to entries in `initialPayload`.
+- `initialPayload` — a single event, an array of events, or a **factory** (`() => event | event[] | undefined | Promise<…>`) yielded before the wrapped iterator's events. Useful when a client subscribes after a state change has already happened, so they don't miss the current state while waiting for the next event. A factory may return `undefined` (e.g. a `findOne` that yields nothing) to mean "no snapshot", in which case iteration proceeds straight to the wrapped stream.
+- `eventIsFinal` — a predicate that ends iteration eagerly when it returns `true` for an event. The triggering event is still yielded, then `wrapped.return()` is called to release resources. It is checked against every event from the wrapped iterator **and** against the _final_ entry of `initialPayload` (earlier entries are always yielded); if that final entry is terminal, iteration ends after the payload drains — in the value form without ever pulling the wrapped iterator.
 
 #### Prefer the factory form for "snapshot then stream"
 

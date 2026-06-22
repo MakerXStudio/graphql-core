@@ -308,7 +308,7 @@ describe('wrapSubscriptionIterator', () => {
 
     it('accepts a factory returning undefined (no snapshot)', async () => {
       const { iterator } = makeIterator([1, 2])
-      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => undefined as unknown as number })
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => undefined })
       expect(await collect(wrapped)).toEqual([1, 2])
     })
 

@@ -1,11 +1,15 @@
 /**
  * A function that lazily produces an initial payload. Provided in place of a plain value when the
  * caller needs the wrapped iterator's subscription to be established *before* the payload is read.
+ *
+ * May return `undefined` (or a promise of it) to indicate "no snapshot" — e.g. a repository
+ * `findOne` that yields nothing — in which case iteration proceeds straight to the wrapped stream.
  */
-export type InitialPayloadFactory<TEventData> = () => TEventData | TEventData[] | Promise<TEventData | TEventData[]>
+export type InitialPayloadFactory<TEventData> = () => TEventData | TEventData[] | undefined | Promise<TEventData | TEventData[] | undefined>
 
 /**
- * An initial payload: a single event, an array of events, or a factory that produces either.
+ * An initial payload: a single event, an array of events, or a factory that produces either (or
+ * `undefined` for "no snapshot").
  *
  * Note: the factory form is detected via `typeof initialPayload === 'function'`. If `TEventData` is
  * itself a callable type, a value-form payload would be misclassified as a factory — wrap such a value
@@ -40,8 +44,9 @@ export type InitialPayload<TEventData> = TEventData | TEventData[] | InitialPayl
  *   "snapshot then stream" pattern so the subscription is established before the snapshot is read.
  * @param eventIsFinal An optional function to determine if an event is final (and iteration should end).
  *   The full `initialPayload` is always yielded; `eventIsFinal` is only checked against its final entry, after which
- *   the wrapped iterator is closed without ever being pulled from. For events from the wrapped iterator, every event
- *   is checked.
+ *   the wrapped iterator is closed (`wrapped.return()`). In the value form it is closed without ever being pulled; in
+ *   the factory form the single eager pull used to establish the subscription is discarded on teardown. For events
+ *   from the wrapped iterator, every event is checked.
  * @returns An async iterator for the event data.
  */
 export function wrapSubscriptionIterator<TEventData>({
