@@ -28,6 +28,52 @@ const collect = async <T>(iterable: AsyncIterable<T>): Promise<T[]> => {
   return out
 }
 
+/**
+ * A controllable fake that mimics `graphql-subscriptions`' `PubSubAsyncIterableIterator`:
+ *  - it does not subscribe in its constructor; `subscribe()` is invoked on the first `next()`
+ *  - `push(event)` resolves a pending pull immediately, otherwise queues for the next pull
+ * Used to assert subscribe ordering and that no event published during the snapshot read is dropped.
+ */
+const makeControllableIterator = <T>() => {
+  const subscribeSpy = vi.fn()
+  const returnSpy = vi.fn(async (_value?: T) => ({ done: true as const, value: undefined as T | undefined }))
+  const throwSpy = vi.fn(async (err: unknown) => {
+    throw err
+  })
+  let subscribed = false
+  const pushQueue: T[] = []
+  const pullQueue: Array<(result: IteratorResult<T>) => void> = []
+  let closed = false
+
+  const it: AsyncIterableIterator<T> = {
+    next: async () => {
+      if (!subscribed) {
+        subscribed = true
+        subscribeSpy()
+      }
+      if (closed) return { done: true, value: undefined }
+      if (pushQueue.length > 0) return { done: false, value: pushQueue.shift() as T }
+      return new Promise<IteratorResult<T>>((resolve) => pullQueue.push(resolve))
+    },
+    return: (async (value?: T) => {
+      closed = true
+      while (pullQueue.length > 0) pullQueue.shift()!({ done: true, value: undefined })
+      return returnSpy(value)
+    }) as AsyncIterableIterator<T>['return'],
+    throw: throwSpy as AsyncIterableIterator<T>['throw'],
+    [Symbol.asyncIterator]() {
+      return this
+    },
+  }
+
+  const push = (event: T) => {
+    if (pullQueue.length > 0) pullQueue.shift()!({ done: false, value: event })
+    else pushQueue.push(event)
+  }
+
+  return { iterator: it, push, subscribeSpy, returnSpy, throwSpy, isSubscribed: () => subscribed }
+}
+
 describe('wrapSubscriptionIterator', () => {
   it('yields a single initial payload before wrapped events', async () => {
     const { iterator } = makeIterator([1, 2])
@@ -196,5 +242,113 @@ describe('wrapSubscriptionIterator', () => {
     expect(await wrapped.next()).toEqual({ done: false, value: 1 })
     expect(await wrapped.next()).toEqual({ done: false, value: 2 })
     expect(await wrapped.next()).toEqual({ done: true, value: undefined })
+  })
+
+  describe('initialPayload factory form (subscribe-before-snapshot race)', () => {
+    it('subscribes (pulls the wrapped iterator) before the initialPayload factory runs', async () => {
+      const { iterator, subscribeSpy } = makeControllableIterator<number>()
+      const factory = vi.fn(async () => [0])
+      // Construction eagerly pulls wrapped.next(), which triggers the subscription synchronously,
+      // while the factory (the snapshot read) is deferred to the first consumer next().
+      wrapSubscriptionIterator({ iterator, initialPayload: factory })
+      expect(subscribeSpy).toHaveBeenCalledTimes(1)
+      expect(factory).not.toHaveBeenCalled()
+    })
+
+    it('value form does not subscribe until the initial payload has drained (contrast)', async () => {
+      const { iterator, subscribeSpy, push } = makeControllableIterator<number>()
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: [0, 1] })
+      const it = wrapped[Symbol.asyncIterator]()
+      expect(subscribeSpy).not.toHaveBeenCalled()
+      expect(await it.next()).toEqual({ done: false, value: 0 })
+      expect(await it.next()).toEqual({ done: false, value: 1 })
+      expect(subscribeSpy).not.toHaveBeenCalled()
+      const next = it.next() // first wrapped pull -> subscribe
+      expect(subscribeSpy).toHaveBeenCalledTimes(1)
+      push(2)
+      expect(await next).toEqual({ done: false, value: 2 })
+    })
+
+    it('does not drop an event published between subscribe and the first consumer next()', async () => {
+      const { iterator, push } = makeControllableIterator<number>()
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => [0, 1] })
+      const it = wrapped[Symbol.asyncIterator]()
+      // Event arrives after the eager subscribe but before the consumer pulls — buffered, not lost.
+      push(99)
+      expect(await it.next()).toEqual({ done: false, value: 0 })
+      expect(await it.next()).toEqual({ done: false, value: 1 })
+      expect(await it.next()).toEqual({ done: false, value: 99 })
+      await it.return!()
+    })
+
+    it('also buffers an event published during the snapshot read itself', async () => {
+      const { iterator, push } = makeControllableIterator<number>()
+      const factory = vi.fn(async () => {
+        push(99) // an event fires while the snapshot is being read
+        return [0]
+      })
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: factory })
+      const it = wrapped[Symbol.asyncIterator]()
+      expect(await it.next()).toEqual({ done: false, value: 0 })
+      expect(await it.next()).toEqual({ done: false, value: 99 })
+      await it.return!()
+    })
+
+    it('accepts a factory returning a single value', async () => {
+      const { iterator } = makeIterator([1, 2])
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => 0 })
+      expect(await collect(wrapped)).toEqual([0, 1, 2])
+    })
+
+    it('accepts a factory returning an array', async () => {
+      const { iterator } = makeIterator(['c', 'd'])
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => ['a', 'b'] })
+      expect(await collect(wrapped)).toEqual(['a', 'b', 'c', 'd'])
+    })
+
+    it('accepts a factory returning undefined (no snapshot)', async () => {
+      const { iterator } = makeIterator([1, 2])
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => undefined as unknown as number })
+      expect(await collect(wrapped)).toEqual([1, 2])
+    })
+
+    it('accepts an async factory (Promise)', async () => {
+      const { iterator } = makeIterator([1, 2])
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => Promise.resolve([0]) })
+      expect(await collect(wrapped)).toEqual([0, 1, 2])
+    })
+
+    it('ends iteration when the last factory entry is final, tearing down the eager subscription', async () => {
+      const { iterator, returnSpy, subscribeSpy } = makeControllableIterator<number>()
+      const wrapped = wrapSubscriptionIterator({
+        iterator,
+        initialPayload: () => [10, 99],
+        eventIsFinal: (n) => n === 99,
+      })
+      expect(subscribeSpy).toHaveBeenCalledTimes(1)
+      expect(await collect(wrapped)).toEqual([10, 99])
+      expect(returnSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('return() before any next() tears down the wrapped iterator and never reads the snapshot', async () => {
+      const { iterator, returnSpy } = makeControllableIterator<number>()
+      const factory = vi.fn(async () => [0])
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: factory })
+      const it = wrapped[Symbol.asyncIterator]()
+      const result = await it.return!('early')
+      expect(result.done).toBe(true)
+      expect(returnSpy).toHaveBeenCalledTimes(1)
+      expect(factory).not.toHaveBeenCalled()
+      expect(await it.next()).toEqual({ done: true, value: undefined })
+    })
+
+    it('throw() before any next() delegates to the wrapped iterator', async () => {
+      const { iterator, throwSpy } = makeControllableIterator<number>()
+      const wrapped = wrapSubscriptionIterator({ iterator, initialPayload: () => [0] })
+      const it = wrapped[Symbol.asyncIterator]()
+      const err = new Error('boom')
+      await expect(it.throw!(err)).rejects.toBe(err)
+      expect(throwSpy).toHaveBeenCalledWith(err)
+    })
   })
 })
