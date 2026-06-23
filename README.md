@@ -370,8 +370,26 @@ This library includes a `subscriptions` module to provide simple setup using the
 
 Wraps an `AsyncIterableIterator` (e.g. one returned by a pubsub `asyncIterableIterator(...)` call) with two optional behaviours:
 
-- `initialPayload` — a single event or array of events yielded before the wrapped iterator's events. Useful when a client subscribes after a state change has already happened, so they don't miss the current state while waiting for the next event.
-- `eventIsFinal` — a predicate that ends iteration eagerly when it returns `true` for an event. The final event is still yielded, then `wrapped.return()` is called to release resources. Only applied to events from the wrapped iterator, not to entries in `initialPayload`.
+- `initialPayload` — a single event, an array of events, or a **factory** (`() => event | event[] | undefined | Promise<…>`) yielded before the wrapped iterator's events. Useful when a client subscribes after a state change has already happened, so they don't miss the current state while waiting for the next event. A factory may return `undefined` (e.g. a `findOne` that yields nothing) to mean "no snapshot", in which case iteration proceeds straight to the wrapped stream.
+- `eventIsFinal` — a predicate that ends iteration eagerly when it returns `true` for an event. The triggering event is still yielded, then `wrapped.return()` is called to release resources. It is checked against every event from the wrapped iterator **and** against the _final_ entry of `initialPayload` (earlier entries are always yielded); if that final entry is terminal, iteration ends after the payload drains — in the value form without ever pulling the wrapped iterator.
+
+#### Prefer the factory form for "snapshot then stream"
+
+pubsub iterators (e.g. `graphql-subscriptions` / `graphql-redis-subscriptions`) subscribe to their channel **lazily, on the first `next()`**. If you read your snapshot (the initial payload) _before_ the iterator is pulled, the channel isn't live yet — any event published between the snapshot read and the subscription going live is **lost** _and_ missing from the snapshot, so the client can be left showing stale state until a manual refetch.
+
+Passing `initialPayload` as a **factory** closes that window: the helper eagerly pulls the wrapped iterator once (establishing the subscription) _before_ invoking the factory to read the snapshot. Events fired during the snapshot read are then buffered by the wrapped iterator and delivered immediately after the snapshot, instead of being dropped.
+
+```ts
+return wrapSubscriptionIterator({
+  iterator: pubsub().asyncIterableIterator(`topic.${id}`),
+  // factory runs AFTER the subscription is kicked, so an event fired during the read isn't lost
+  initialPayload: () => repo.find({ where: { id } }),
+})
+```
+
+> The plain value form (a single event or array) is unchanged and still subscribes lazily — fine when there is no read between subscribe and snapshot (e.g. a cached value already in hand, as below).
+>
+> Detection is via `typeof initialPayload === 'function'`. If your event type is itself callable, wrap a value-form payload in an array (`[value]`) to disambiguate it from a factory.
 
 Typical use is in a subscription resolver that needs to bridge a "current state" (cache or other persisted state lookup) with a live event stream, and close the subscription once a terminal event arrives:
 
