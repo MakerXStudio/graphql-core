@@ -71,6 +71,11 @@ export interface GraphQLLogOperationInfo<TLogger extends Logger = Logger> extend
    */
   deprecatedElements?: DeprecatedElementUsage[]
   /**
+   * Whether a limit stopped deprecated element collection, meaning `deprecatedElements` may be
+   * incomplete. Omitted from the log entry when false.
+   */
+  deprecatedElementsTruncated?: boolean
+  /**
    * The logger to use.
    */
   logger: TLogger
@@ -93,6 +98,7 @@ export const logGraphQLOperation = <TLogger extends Logger = Logger>({
   variables,
   result,
   deprecatedElements,
+  deprecatedElementsTruncated,
   logger,
   logLevel = 'info',
   ...rest
@@ -111,6 +117,7 @@ export const logGraphQLOperation = <TLogger extends Logger = Logger>({
         result: result ? omitBy(result, isNil) : undefined,
         isIntrospectionQuery: isIntrospection || undefined,
         deprecatedElements: deprecatedElements?.length ? deprecatedElements : undefined,
+        deprecatedElementsTruncated: deprecatedElementsTruncated || undefined,
         ...omitBy(rest, isNil),
       },
       isNil,
@@ -147,10 +154,14 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
   const { data, ...resultWithoutData } = result ?? {}
 
   let deprecatedElements: DeprecatedElementUsage[] | undefined
+  let deprecatedElementsTruncated: boolean | undefined
   if (includeDeprecatedElements) {
     try {
-      deprecatedElements = collectDeprecatedElementUsage({ schema, document, operationName, variables: variableValues })
+      const usage = collectDeprecatedElementUsage({ schema, document, operationName, variables: variableValues })
+      deprecatedElements = usage.elements
+      deprecatedElementsTruncated = usage.truncated
     } catch (error) {
+      // Telemetry must never take down the subscription that produced it.
       logger.warn('Failed to collect deprecated schema element usage', { error, operationName })
     }
   }
@@ -164,6 +175,7 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
     variables: variableValues,
     result: resultWithoutData,
     deprecatedElements,
+    deprecatedElementsTruncated,
     logger,
     logLevel,
   })

@@ -82,6 +82,16 @@ export interface CollectDeprecatedElementUsageOptions {
   maxElements?: number
 }
 
+export interface CollectDeprecatedElementUsageResult {
+  elements: DeprecatedElementUsage[]
+  /**
+   * True when a limit — `maxElements`, `maxVariableDepth` or `maxVariableNodes` — stopped
+   * collection before it finished, so `elements` may be missing elements the operation really used.
+   * Absence from a truncated result is not evidence that an element is unused.
+   */
+  truncated: boolean
+}
+
 /**
  * Reports every `@deprecated` schema element an operation uses, across both the document and the
  * supplied variables.
@@ -93,8 +103,11 @@ export interface CollectDeprecatedElementUsageOptions {
  *
  * Results are deduplicated on kind and name — at most one entry per distinct element per request,
  * bounded by the size of the schema rather than the size of the request — and sorted, so records
- * are stable across requests. When the result reaches `maxElements` it is truncated, so callers
- * should treat a result of exactly that length as possibly incomplete.
+ * are stable across requests.
+ *
+ * Returns `truncated` when any limit stopped collection. Absence from `elements` is only evidence
+ * that an element went unused when `truncated` is false — which matters, because concluding
+ * "nothing uses this" from a truncated result is how a still-used element gets deleted.
  *
  * The variable walk reads untrusted input before coercion, so a payload whose shape contradicts its
  * declared type reaches it. Every shape it depends on is guarded: malformed variables yield no
@@ -112,20 +125,30 @@ export function collectDeprecatedElementUsage({
   maxVariableDepth = DEFAULT_MAX_VARIABLE_DEPTH,
   maxVariableNodes = DEFAULT_MAX_VARIABLE_NODES,
   maxElements = DEFAULT_MAX_ELEMENTS,
-}: CollectDeprecatedElementUsageOptions): DeprecatedElementUsage[] {
+}: CollectDeprecatedElementUsageOptions): CollectDeprecatedElementUsageResult {
   const collected = new Map<string, DeprecatedElementUsage>()
+  const walk: WalkState = { maxVariableDepth, remaining: maxVariableNodes, truncated: false }
+
   const collect = (usage: DeprecatedElementUsage): void => {
     const key = `${usage.kind}:${usage.name}`
-    if (collected.size >= maxElements || collected.has(key)) return
+    // Already recorded is deduplication, not truncation — only a rejected *new* element is a loss.
+    if (collected.has(key)) return
+    if (collected.size >= maxElements) {
+      walk.truncated = true
+      return
+    }
     collected.set(key, usage)
   }
 
   const resolvedOperation = operation ?? getOperationAST(document, operationName ?? undefined)
 
   collectFromDocument(schema, scopeToOperation(document, resolvedOperation), collect)
-  collectFromVariables(schema, resolvedOperation?.variableDefinitions, variables, { maxVariableDepth, maxVariableNodes }, collect)
+  collectFromVariables(schema, resolvedOperation?.variableDefinitions, variables, walk, collect)
 
-  return [...collected.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
+  return {
+    elements: [...collected.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name)),
+    truncated: walk.truncated,
+  }
 }
 
 type Collect = (usage: DeprecatedElementUsage) => void
@@ -225,9 +248,11 @@ function getPath(ancestors: readonly (ASTNode | readonly ASTNode[])[], leaf?: st
   return segments.join('.')
 }
 
-interface WalkLimits {
+interface WalkState {
   maxVariableDepth: number
-  maxVariableNodes: number
+  /** Remaining node budget, shared across every variable of the operation. */
+  remaining: number
+  truncated: boolean
 }
 
 /**
@@ -242,12 +267,10 @@ function collectFromVariables(
   schema: GraphQLSchema,
   variableDefinitions: readonly VariableDefinitionNode[] | undefined,
   variables: Record<string, unknown> | null | undefined,
-  limits: WalkLimits,
+  state: WalkState,
   collect: Collect,
 ): void {
   if (variables == null) return
-
-  const budget = { remaining: limits.maxVariableNodes }
 
   for (const variableDefinition of variableDefinitions ?? []) {
     const variableName = variableDefinition.variable.name.value
@@ -256,21 +279,19 @@ function collectFromVariables(
     const type = typeFromAST(schema, variableDefinition.type)
     if (!isInputType(type)) continue
 
-    walkInputValue(type, variables[variableName], `$${variableName}`, 0, limits, budget, collect)
+    walkInputValue(type, variables[variableName], `$${variableName}`, 0, state, collect)
   }
 }
 
-function walkInputValue(
-  type: GraphQLInputType,
-  value: unknown,
-  path: string,
-  depth: number,
-  limits: WalkLimits,
-  budget: { remaining: number },
-  collect: Collect,
-): void {
-  if (depth > limits.maxVariableDepth || budget.remaining <= 0 || value == null) return
-  budget.remaining--
+function walkInputValue(type: GraphQLInputType, value: unknown, path: string, depth: number, state: WalkState, collect: Collect): void {
+  // A limit stopping the descent is a loss of telemetry, so it is recorded; a null value is simply
+  // nothing to walk, and must not be reported as one.
+  if (depth > state.maxVariableDepth || state.remaining <= 0) {
+    state.truncated = true
+    return
+  }
+  if (value == null) return
+  state.remaining--
 
   // Unwrapped inline rather than by recursing, so a nullability wrapper doesn't spend a node from
   // the budget for a value that has not been descended into yet.
@@ -282,8 +303,11 @@ function walkInputValue(
     for (const [index, item] of items.entries()) {
       // Checked here rather than relying on the recursive call returning early: the loop itself is
       // the unbounded part, since list length comes from the payload and each step builds a path.
-      if (budget.remaining <= 0) return
-      walkInputValue(unwrapped.ofType, item, Array.isArray(value) ? `${path}.${index}` : path, depth + 1, limits, budget, collect)
+      if (state.remaining <= 0) {
+        state.truncated = true
+        return
+      }
+      walkInputValue(unwrapped.ofType, item, Array.isArray(value) ? `${path}.${index}` : path, depth + 1, state, collect)
     }
     return
   }
@@ -302,7 +326,10 @@ function walkInputValue(
   if (!isInputObjectType(unwrapped) || !isRecord(value)) return
 
   for (const field of Object.values(unwrapped.getFields())) {
-    if (budget.remaining <= 0) return
+    if (state.remaining <= 0) {
+      state.truncated = true
+      return
+    }
     if (!Object.hasOwn(value, field.name)) continue
 
     const fieldPath = `${path}.${field.name}`
@@ -312,7 +339,7 @@ function walkInputValue(
       collect({ kind: 'input-field', name: `${unwrapped.name}.${field.name}`, deprecationReason: field.deprecationReason, path: fieldPath })
     }
 
-    walkInputValue(field.type, value[field.name], fieldPath, depth + 1, limits, budget, collect)
+    walkInputValue(field.type, value[field.name], fieldPath, depth + 1, state, collect)
   }
 }
 

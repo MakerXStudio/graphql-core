@@ -81,6 +81,10 @@ const schema = buildSchema(typeDefs)
 type CollectOverrides = Omit<CollectDeprecatedElementUsageOptions, 'schema' | 'document'>
 
 function collect(query: string, overrides: CollectOverrides = {}): DeprecatedElementUsage[] {
+  return collectDeprecatedElementUsage({ schema, document: parse(query), ...overrides }).elements
+}
+
+function collectResult(query: string, overrides: CollectOverrides = {}) {
   return collectDeprecatedElementUsage({ schema, document: parse(query), ...overrides })
 }
 
@@ -564,7 +568,7 @@ describe('collectDeprecatedElementUsage', () => {
         }
       `)
 
-      const usages = collectDeprecatedElementUsage({
+      const usage = collectDeprecatedElementUsage({
         schema: plainSchema,
         document: parse(/* GraphQL */ `
           {
@@ -573,7 +577,7 @@ describe('collectDeprecatedElementUsage', () => {
         `),
       })
 
-      expect(usages).toEqual([])
+      expect(usage).toEqual({ elements: [], truncated: false })
     })
   })
 
@@ -621,6 +625,54 @@ describe('collectDeprecatedElementUsage', () => {
       collect(saveWidgetViaVariable, { variables: { input: { tags } }, maxVariableNodes: 10 })
 
       expect(indexReads).toBeLessThan(50)
+    })
+
+    /**
+     * Truncation is reported because the question this telemetry answers is "does anything still
+     * use this element". A truncated result that looks complete invites the answer "no", which is
+     * how a still-used element gets deleted — so every limit that can hide usage has to say so.
+     */
+    describe('reports truncation', () => {
+      it('is false when nothing was cut short', () => {
+        expect(collectResult(saveWidgetViaVariable, { variables: { input: { legacyId: 'w1' } } })).toMatchObject({ truncated: false })
+      })
+
+      it('is true when the element cap is reached', () => {
+        const query = /* GraphQL */ `
+          query Capped {
+            widget(legacyId: "w1") {
+              legacyName
+            }
+          }
+        `
+
+        expect(collectResult(query, { maxElements: 1 }).truncated).toBe(true)
+        expect(collectResult(query, { maxElements: 2 }).truncated).toBe(false)
+      })
+
+      it('is true when the depth cap stops the walk', () => {
+        expect(collectResult(saveWidgetViaVariable, { variables: { input: { nested: nestChildren(200) } } })).toMatchObject({
+          elements: [],
+          truncated: true,
+        })
+      })
+
+      it('is true when the node budget stops the walk', () => {
+        const variables = { input: { tags: [{ legacyLabel: 'gone' }] } }
+
+        expect(collectResult(saveWidgetViaVariable, { variables, maxVariableNodes: 1 })).toMatchObject({ elements: [], truncated: true })
+      })
+
+      it('is not raised by deduplication, which loses nothing', () => {
+        // Every repeat past the first is dropped as a duplicate, not as truncation.
+        const variables = { input: { tags: Array.from({ length: 40 }, () => ({ legacyLabel: 'x' })) } }
+
+        expect(collectResult(saveWidgetViaVariable, { variables })).toMatchObject({ truncated: false })
+      })
+
+      it('is not raised by a null value, which has nothing to walk', () => {
+        expect(collectResult(saveWidgetViaVariable, { variables: { input: { nested: null } } })).toMatchObject({ truncated: false })
+      })
     })
 
     it('caps the number of elements returned', () => {

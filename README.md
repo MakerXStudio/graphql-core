@@ -288,8 +288,9 @@ This function can be used across implementations, e.g. in a [GraphQL Envelop plu
 Reports every `@deprecated` schema element an operation uses, so you can tell whether a deprecated element is safe to remove.
 
 ```ts
-const deprecatedElements = collectDeprecatedElementUsage({ schema, document, operation, operationName, variables })
-// [{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', deprecationReason: 'Use id.', path: '$input.legacyId' }]
+const { elements, truncated } = collectDeprecatedElementUsage({ schema, document, operation, operationName, variables })
+// elements:  [{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', deprecationReason: 'Use id.', path: '$input.legacyId' }]
+// truncated: false
 ```
 
 Five kinds are detected: `output-field`, `argument`, `directive-argument`, `input-field` and `enum-value`.
@@ -304,7 +305,8 @@ Behaviour worth knowing:
 - **Only the executed operation counts.** A document may hold several operations but only one runs, so the others — and any fragments only they reach — are excluded.
 - **Presence is the signal, explicit `null` included.** A client still sending a field would break if it were removed.
 - **It never throws on malformed variables.** The walk runs before graphql-js coerces variables, so a payload whose shape contradicts its declared type reaches it; such values yield no records rather than an error.
-- **Work is bounded** by `maxVariableDepth` (default 25), `maxVariableNodes` (default 10,000) and `maxElements` (default 50). A result of exactly `maxElements` should be treated as possibly incomplete.
+- **Work is bounded** by `maxVariableDepth` (default 25), `maxVariableNodes` (default 10,000) and `maxElements` (default 50). Whenever any of them stops collection early, `truncated` is `true`.
+- **`truncated` guards against a false negative.** Absence from `elements` only means an element went unused when `truncated` is `false`; on a truncated result the walk stopped before it finished. This matters because reading "nothing uses this" off an incomplete result is exactly how a still-used element gets deleted. Deduplication and null values do not set it — nothing is lost in either case.
 
 Two limitations to design around:
 
