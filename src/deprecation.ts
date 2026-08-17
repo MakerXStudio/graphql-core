@@ -280,6 +280,9 @@ function walkInputValue(
     // GraphQL accepts a bare value in a list position, so handle both shapes.
     const items = Array.isArray(value) ? value : [value]
     for (const [index, item] of items.entries()) {
+      // Checked here rather than relying on the recursive call returning early: the loop itself is
+      // the unbounded part, since list length comes from the payload and each step builds a path.
+      if (budget.remaining <= 0) return
       walkInputValue(unwrapped.ofType, item, Array.isArray(value) ? `${path}.${index}` : path, depth + 1, limits, budget, collect)
     }
     return
@@ -299,6 +302,7 @@ function walkInputValue(
   if (!isInputObjectType(unwrapped) || !isRecord(value)) return
 
   for (const field of Object.values(unwrapped.getFields())) {
+    if (budget.remaining <= 0) return
     if (!Object.hasOwn(value, field.name)) continue
 
     const fieldPath = `${path}.${field.name}`

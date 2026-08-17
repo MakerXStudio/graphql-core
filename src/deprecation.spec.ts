@@ -604,6 +604,25 @@ describe('collectDeprecatedElementUsage', () => {
       expect(names(collect(saveWidgetViaVariable, { variables }))).toEqual(['TagInput.legacyLabel'])
     })
 
+    it('stops iterating a list once the node budget is spent, rather than running it out', () => {
+      // The recursive call returns immediately once the budget is gone, but the loop around it is
+      // the unbounded part: list length comes from the payload, and each step builds a path string.
+      let indexReads = 0
+      const tags = new Proxy(
+        Array.from({ length: 5_000 }, (_, i) => ({ legacyLabel: `tag-${i}` })),
+        {
+          get(target, property, receiver) {
+            if (typeof property === 'string' && /^\d+$/.test(property)) indexReads++
+            return Reflect.get(target, property, receiver)
+          },
+        },
+      )
+
+      collect(saveWidgetViaVariable, { variables: { input: { tags } }, maxVariableNodes: 10 })
+
+      expect(indexReads).toBeLessThan(50)
+    })
+
     it('caps the number of elements returned', () => {
       const query = /* GraphQL */ `
         query Capped {
