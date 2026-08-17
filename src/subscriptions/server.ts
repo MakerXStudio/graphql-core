@@ -21,6 +21,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   requireAuth,
   jwtClaimsToLog = ['oid', 'iss'],
   resolveSubscriptionOperationLogger,
+  includeDeprecatedElements,
 }: {
   schema: GraphQLSchema
   httpServer: Server
@@ -32,6 +33,11 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   requireAuth?: boolean
   jwtClaimsToLog?: string[]
   resolveSubscriptionOperationLogger?: (context: GraphQLContext) => TLogger
+  /**
+   * If true, deprecated schema elements a subscription uses are collected and logged when it is
+   * established. Not collected per emitted payload: the usage is a property of the operation.
+   */
+  includeDeprecatedElements?: boolean
 }) {
   if (requireAuth && !verifyToken) throw new Error('verifyToken must be supplied when requireAuth is true')
 
@@ -103,7 +109,13 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
         })
       },
       onOperation(_ctx, id, _payload, args) {
-        logSubscriptionOperation({ id, args, logLevel: operationLogLevel, resolveLogger: resolveSubscriptionOperationLogger })
+        logSubscriptionOperation({
+          id,
+          args,
+          logLevel: operationLogLevel,
+          resolveLogger: resolveSubscriptionOperationLogger,
+          includeDeprecatedElements,
+        })
       },
       onNext(_ctx, id, _payload, args, { data, ...result }) {
         logSubscriptionOperation({ id, args, logLevel: operationLogLevel, result, resolveLogger: resolveSubscriptionOperationLogger })

@@ -5,6 +5,8 @@ import type { ExecutionArgs, GraphQLFormattedError } from 'graphql'
 import { OperationTypeNode, print } from 'graphql'
 import type { ExecutionResult } from 'graphql-ws'
 import type { GraphQLContext } from './context'
+import type { DeprecatedElementUsage } from './deprecation'
+import { collectDeprecatedElementUsage } from './deprecation'
 import { isIntrospectionQuery } from './operation'
 import { isNil } from './utils'
 
@@ -64,6 +66,11 @@ export interface GraphQLLogOperationInfo<TLogger extends Logger = Logger> extend
    */
   isSubsequentPayload?: boolean
   /**
+   * Deprecated schema elements the operation used, as returned by `collectDeprecatedElementUsage`.
+   * Omitted from the log entry when empty.
+   */
+  deprecatedElements?: DeprecatedElementUsage[]
+  /**
    * The logger to use.
    */
   logger: TLogger
@@ -85,6 +92,7 @@ export const logGraphQLOperation = <TLogger extends Logger = Logger>({
   query,
   variables,
   result,
+  deprecatedElements,
   logger,
   logLevel = 'info',
   ...rest
@@ -102,6 +110,7 @@ export const logGraphQLOperation = <TLogger extends Logger = Logger>({
         duration: started ? Date.now() - started : undefined,
         result: result ? omitBy(result, isNil) : undefined,
         isIntrospectionQuery: isIntrospection || undefined,
+        deprecatedElements: deprecatedElements?.length ? deprecatedElements : undefined,
         ...omitBy(rest, isNil),
       },
       isNil,
@@ -116,6 +125,7 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
   message,
   logLevel,
   resolveLogger,
+  includeDeprecatedElements,
 }: {
   id?: string
   args: ExecutionArgs
@@ -123,14 +133,27 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
   message?: string
   logLevel?: keyof LoggerLogFunctions<TLogger>
   resolveLogger?: (context: GraphQLContext) => TLogger
+  /**
+   * If true, deprecated schema elements the operation uses are collected and logged.
+   */
+  includeDeprecatedElements?: boolean
 }) => {
   const logger = resolveLogger
     ? resolveLogger(args.contextValue as GraphQLContext)
     : ((args.contextValue as GraphQLContext).logger as TLogger)
   if (!logger) return
 
-  const { operationName, variableValues, document } = args
+  const { operationName, variableValues, document, schema } = args
   const { data, ...resultWithoutData } = result ?? {}
+
+  let deprecatedElements: DeprecatedElementUsage[] | undefined
+  if (includeDeprecatedElements) {
+    try {
+      deprecatedElements = collectDeprecatedElementUsage({ schema, document, operationName, variables: variableValues })
+    } catch (error) {
+      logger.warn('Failed to collect deprecated schema element usage', { error, operationName })
+    }
+  }
 
   logGraphQLOperation({
     message,
@@ -140,6 +163,7 @@ export const logSubscriptionOperation = <TLogger extends Logger = Logger>({
     query: print(document),
     variables: variableValues,
     result: resultWithoutData,
+    deprecatedElements,
     logger,
     logLevel,
   })
