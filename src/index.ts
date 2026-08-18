@@ -1,4 +1,5 @@
 export * from './context'
+export * from './deprecation'
 export * from './logging'
 export * from './operation'
 export * from './request-info'

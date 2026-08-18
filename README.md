@@ -281,6 +281,38 @@ Refer to the `GraphQLLogOperationInfo` type for the definition of input.
 
 This function can be used across implementations, e.g. in a [GraphQL Envelop plugin](https://www.envelop.dev/docs/plugins) or [ApolloServer plugin](https://github.com/MakerXStudio/graphql-apollo-server/blob/main/src/plugins/graphql-operation-logging-plugin.ts).
 
+## Deprecation usage
+
+### collectDeprecatedElementUsage
+
+Reports every `@deprecated` schema element an operation uses, so you can tell whether a deprecated element is safe to remove.
+
+```ts
+const { elements, truncated } = collectDeprecatedElementUsage({ schema, document, operation, operationName, variables })
+// elements:  [{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', path: '$input.legacyId' }]
+// truncated: false
+```
+
+Five kinds are detected: `output-field`, `argument`, `directive-argument`, `input-field` and `enum-value`.
+
+Output fields and arguments are named in the operation document, so an AST walk finds them. Input fields and enum values are data the caller _supplies_ rather than selects, and can arrive either as a document literal or inside a variable — where the name appears nowhere in the AST — so the supplied variable values are walked too, against their declared input types.
+
+Consumers generally don't call this directly. It is wired into `useSubscriptionsServer` via `includeDeprecatedElements` (below), and into Apollo Server by the `includeDeprecatedElements` option of [`graphqlOperationLoggingPlugin`](https://github.com/MakerXStudio/graphql-apollo-server), which adds the result to the operation log entry as `deprecatedElements`.
+
+Behaviour worth knowing:
+
+- **Results are deduplicated** on kind and name, and sorted. One request produces at most one entry per distinct element, so a 40-element list carrying the same deprecated field yields one record, not 40.
+- **Only the executed operation counts.** A document may hold several operations but only one runs, so the others — and any fragments only they reach — are excluded.
+- **Presence is the signal, explicit `null` included.** A client still sending a field would break if it were removed.
+- **It never throws on malformed variables.** The walk runs before graphql-js coerces variables, so a payload whose shape contradicts its declared type reaches it; such values yield no records rather than an error.
+- **Work is bounded** by `maxVariableDepth` (default 25), `maxVariableNodes` (default 10,000) and `maxElements` (default 50). Whenever any of them stops collection early, `truncated` is `true`.
+- **`truncated` guards against a false negative.** Absence from `elements` only means an element went unused when `truncated` is `false`; on a truncated result the walk stopped before it finished. This matters because reading "nothing uses this" off an incomplete result is exactly how a still-used element gets deleted. Deduplication and null values do not set it — nothing is lost in either case.
+
+Two limitations to design around:
+
+- **This is request-side telemetry.** It observes values a caller _sends_, never values the server returns. A deprecated enum value that only ever appears in responses reads as unused however often the server returns it.
+- **`path` is a best-effort debugging aid, not an aggregation key.** Aggregate on `name`. A field selected inside a fragment definition has no enclosing field in its ancestry, so its path is relative to the fragment rather than the operation — which is the common case for clients that use generated fragments.
+
 ## GraphQL subscriptions
 
 This library includes a `subscriptions` module to provide simple setup using the [GraphQL WS](https://the-guild.dev/graphql/ws) package.
@@ -334,6 +366,8 @@ This library includes a `subscriptions` module to provide simple setup using the
    - Auth token validation as part of establishing (or rejecting) the connection (behaviour defined by `verifyToken` and `requireAuth` args)
    - GraphQL context creation
    - Logging from the server `onConnect`, `onDisconnect`, `onOperation`, `onNext` and `onError` callbacks
+
+   Pass `includeDeprecatedElements: true` to add [deprecation usage](#collectdeprecatedelementusage) to the operation log entry as `deprecatedElements`. It is collected once, when the subscription is established, rather than per emitted payload — the usage is a property of the operation, not of each event.
 
    Example for Apollo Server (`wsServerCleanup` called in the `drainServer` plugin callback):
 
