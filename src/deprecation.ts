@@ -29,18 +29,18 @@ import {
  * mutually recursive, and variables are walked before graphql-js coerces them — so nothing else
  * bounds how deep a hand-crafted payload can go. Far above any real operation's nesting.
  */
-export const DEFAULT_MAX_VARIABLE_DEPTH = 25
+export const DEFAULT_DEPRECATION_MAX_VARIABLE_DEPTH = 25
 
 /**
  * Bounds the *breadth* of the variable walk, which the depth cap does not: a single large array of
  * small input objects is shallow but arbitrarily wide.
  */
-export const DEFAULT_MAX_VARIABLE_NODES = 10_000
+export const DEFAULT_DEPRECATION_MAX_VARIABLE_NODES = 10_000
 
 /**
  * Caps the collected result so one hostile document cannot blow up a log entry.
  */
-export const DEFAULT_MAX_ELEMENTS = 50
+export const DEFAULT_DEPRECATION_MAX_ELEMENTS = 50
 
 const UNKNOWN = '<unknown>'
 
@@ -53,10 +53,6 @@ export interface DeprecatedElementUsage {
    * `Type.field`, `Type.field(arg)`, `@directive(arg)`, `InputType.field`, `EnumType.VALUE`.
    */
   name: string
-  /**
-   * The `reason` recorded on the element's `@deprecated` directive.
-   */
-  deprecationReason: string
   /**
    * Best-effort location, for debugging a single record — not an aggregation key. A field selected
    * inside a fragment definition has no enclosing field in its ancestry, so its path is relative to
@@ -122,9 +118,9 @@ export function collectDeprecatedElementUsage({
   operation,
   operationName,
   variables,
-  maxVariableDepth = DEFAULT_MAX_VARIABLE_DEPTH,
-  maxVariableNodes = DEFAULT_MAX_VARIABLE_NODES,
-  maxElements = DEFAULT_MAX_ELEMENTS,
+  maxVariableDepth = DEFAULT_DEPRECATION_MAX_VARIABLE_DEPTH,
+  maxVariableNodes = DEFAULT_DEPRECATION_MAX_VARIABLE_NODES,
+  maxElements = DEFAULT_DEPRECATION_MAX_ELEMENTS,
 }: CollectDeprecatedElementUsageOptions): CollectDeprecatedElementUsageResult {
   const collected = new Map<string, DeprecatedElementUsage>()
   const walk: WalkState = { maxVariableDepth, remaining: maxVariableNodes, truncated: false }
@@ -181,7 +177,6 @@ function collectFromDocument(schema: GraphQLSchema, document: DocumentNode, coll
         collect({
           kind: 'output-field',
           name: `${typeInfo.getParentType()?.name ?? UNKNOWN}.${field.name}`,
-          deprecationReason: field.deprecationReason,
           path: getPath(ancestors, field.name),
         })
       },
@@ -197,7 +192,6 @@ function collectFromDocument(schema: GraphQLSchema, document: DocumentNode, coll
           name: directive
             ? `@${directive.name}(${argument.name})`
             : `${typeInfo.getParentType()?.name ?? UNKNOWN}.${typeInfo.getFieldDef()?.name ?? UNKNOWN}(${argument.name})`,
-          deprecationReason: argument.deprecationReason,
           path: getPath(ancestors),
         })
       },
@@ -211,7 +205,6 @@ function collectFromDocument(schema: GraphQLSchema, document: DocumentNode, coll
         collect({
           kind: 'input-field',
           name: `${parentType.name}.${inputField.name}`,
-          deprecationReason: inputField.deprecationReason,
           path: getPath(ancestors, inputField.name),
         })
       },
@@ -223,7 +216,6 @@ function collectFromDocument(schema: GraphQLSchema, document: DocumentNode, coll
         collect({
           kind: 'enum-value',
           name: `${enumType.name}.${enumValue.name}`,
-          deprecationReason: enumValue.deprecationReason,
           path: getPath(ancestors),
         })
       },
@@ -317,7 +309,7 @@ function walkInputValue(type: GraphQLInputType, value: unknown, path: string, de
     if (typeof value !== 'string') return
     const enumValue = unwrapped.getValue(value)
     if (enumValue?.deprecationReason != null) {
-      collect({ kind: 'enum-value', name: `${unwrapped.name}.${enumValue.name}`, deprecationReason: enumValue.deprecationReason, path })
+      collect({ kind: 'enum-value', name: `${unwrapped.name}.${enumValue.name}`, path })
     }
     return
   }
@@ -336,7 +328,7 @@ function walkInputValue(type: GraphQLInputType, value: unknown, path: string, de
     // Presence is the signal, explicit `null` included: a client still sending the field would
     // break if it were removed from the schema.
     if (field.deprecationReason != null) {
-      collect({ kind: 'input-field', name: `${unwrapped.name}.${field.name}`, deprecationReason: field.deprecationReason, path: fieldPath })
+      collect({ kind: 'input-field', name: `${unwrapped.name}.${field.name}`, path: fieldPath })
     }
 
     walkInputValue(field.type, value[field.name], fieldPath, depth + 1, state, collect)

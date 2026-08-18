@@ -150,9 +150,7 @@ describe('collectDeprecatedElementUsage', () => {
         }
       `)
 
-      expect(usages).toEqual([
-        { kind: 'output-field', name: 'Widget.legacyName', deprecationReason: 'Use name.', path: 'widget.legacyName' },
-      ])
+      expect(usages).toEqual([{ kind: 'output-field', name: 'Widget.legacyName', path: 'widget.legacyName' }])
     })
 
     it('records a deprecated argument given a literal value', () => {
@@ -164,7 +162,7 @@ describe('collectDeprecatedElementUsage', () => {
         }
       `)
 
-      expect(usages).toEqual([{ kind: 'argument', name: 'Query.widget(legacyId)', deprecationReason: 'Use id.', path: 'widget' }])
+      expect(usages).toEqual([{ kind: 'argument', name: 'Query.widget(legacyId)', path: 'widget' }])
     })
 
     it('records a deprecated argument even when its value comes from a variable', () => {
@@ -195,7 +193,7 @@ describe('collectDeprecatedElementUsage', () => {
         }
       `)
 
-      expect(usages).toEqual([{ kind: 'directive-argument', name: '@audit(legacyTag)', deprecationReason: 'Use tag.', path: 'widget' }])
+      expect(usages).toEqual([{ kind: 'directive-argument', name: '@audit(legacyTag)', path: 'widget' }])
     })
 
     it('records nothing when the operation selects no deprecated element', () => {
@@ -235,9 +233,7 @@ describe('collectDeprecatedElementUsage', () => {
     it('records an input field sent via variables', () => {
       const usages = collect(saveWidgetViaVariable, { variables: { input: { legacyId: 'w1' } } })
 
-      expect(usages).toEqual([
-        { kind: 'input-field', name: 'WidgetFilterInput.legacyId', deprecationReason: 'Use id.', path: '$input.legacyId' },
-      ])
+      expect(usages).toEqual([{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', path: '$input.legacyId' }])
     })
 
     it('records an input field written inline in the document', () => {
@@ -249,9 +245,7 @@ describe('collectDeprecatedElementUsage', () => {
         }
       `)
 
-      expect(usages).toEqual([
-        { kind: 'input-field', name: 'WidgetFilterInput.legacyId', deprecationReason: 'Use id.', path: 'saveWidget.legacyId' },
-      ])
+      expect(usages).toEqual([{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', path: 'saveWidget.legacyId' }])
     })
 
     it('records an input field alongside a deprecated output field on the same request', () => {
@@ -290,8 +284,8 @@ describe('collectDeprecatedElementUsage', () => {
       })
 
       expect(usages).toEqual([
-        { kind: 'input-field', name: 'NestedInput.legacyFlag', deprecationReason: 'Use flag.', path: '$input.nested.legacyFlag' },
-        { kind: 'input-field', name: 'WidgetFilterInput.legacyNested', deprecationReason: 'Use nested.', path: '$input.legacyNested' },
+        { kind: 'input-field', name: 'NestedInput.legacyFlag', path: '$input.nested.legacyFlag' },
+        { kind: 'input-field', name: 'WidgetFilterInput.legacyNested', path: '$input.legacyNested' },
       ])
     })
 
@@ -300,9 +294,7 @@ describe('collectDeprecatedElementUsage', () => {
         variables: { input: { tags: [{ label: 'kept' }, { legacyLabel: 'gone' }] } },
       })
 
-      expect(usages).toEqual([
-        { kind: 'input-field', name: 'TagInput.legacyLabel', deprecationReason: 'Use label.', path: '$input.tags.1.legacyLabel' },
-      ])
+      expect(usages).toEqual([{ kind: 'input-field', name: 'TagInput.legacyLabel', path: '$input.tags.1.legacyLabel' }])
     })
 
     it('records one entry however many list elements carry the same field', () => {
@@ -455,7 +447,7 @@ describe('collectDeprecatedElementUsage', () => {
         }
       `)
 
-      expect(usages).toEqual([{ kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', deprecationReason: 'Use ACTIVE.', path: 'widget' }])
+      expect(usages).toEqual([{ kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', path: 'widget' }])
     })
 
     it('records an enum value sent as a variable', () => {
@@ -470,25 +462,19 @@ describe('collectDeprecatedElementUsage', () => {
         { variables: { status: 'LEGACY_STATUS' } },
       )
 
-      expect(usages).toEqual([
-        { kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', deprecationReason: 'Use ACTIVE.', path: '$status' },
-      ])
+      expect(usages).toEqual([{ kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', path: '$status' }])
     })
 
     it('records an enum value nested inside an input object sent as a variable', () => {
       const usages = collect(saveWidgetViaVariable, { variables: { input: { status: 'LEGACY_STATUS' } } })
 
-      expect(usages).toEqual([
-        { kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', deprecationReason: 'Use ACTIVE.', path: '$input.status' },
-      ])
+      expect(usages).toEqual([{ kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', path: '$input.status' }])
     })
 
     it('records an enum value inside a list, with its index in the path', () => {
       const usages = collect(saveWidgetViaVariable, { variables: { input: { statuses: ['ACTIVE', 'LEGACY_STATUS'] } } })
 
-      expect(usages).toEqual([
-        { kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', deprecationReason: 'Use ACTIVE.', path: '$input.statuses.1' },
-      ])
+      expect(usages).toEqual([{ kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', path: '$input.statuses.1' }])
     })
 
     it('records one entry however many list elements repeat the same value', () => {
@@ -523,7 +509,7 @@ describe('collectDeprecatedElementUsage', () => {
   })
 
   describe('result shape', () => {
-    it('carries the deprecation reason for every kind', () => {
+    it('detects all five kinds from a single operation', () => {
       const usages = collect(
         /* GraphQL */ `
           mutation EveryKind($input: WidgetFilterInput!) {
@@ -538,11 +524,11 @@ describe('collectDeprecatedElementUsage', () => {
         { variables: { input: { status: 'LEGACY_STATUS' } } },
       )
 
-      expect(usages.map(({ kind, deprecationReason }) => [kind, deprecationReason])).toEqual([
-        ['directive-argument', 'Use tag.'],
-        ['enum-value', 'Use ACTIVE.'],
-        ['input-field', 'Use id.'],
-        ['output-field', 'Use name.'],
+      expect(usages).toEqual([
+        { kind: 'directive-argument', name: '@audit(legacyTag)', path: 'saveWidget' },
+        { kind: 'enum-value', name: 'WidgetStatus.LEGACY_STATUS', path: '$input.status' },
+        { kind: 'input-field', name: 'WidgetFilterInput.legacyId', path: 'saveWidget.legacyId' },
+        { kind: 'output-field', name: 'Widget.legacyName', path: 'saveWidget.legacyName' },
       ])
     })
 

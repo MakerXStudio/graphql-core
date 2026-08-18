@@ -11,7 +11,6 @@ const loggedEntry = (logger: ReturnType<typeof makeLogger>): Record<string, unkn
 const usage: DeprecatedElementUsage = {
   kind: 'output-field',
   name: 'Widget.legacyName',
-  deprecationReason: 'Use name.',
   path: 'widget.legacyName',
 }
 

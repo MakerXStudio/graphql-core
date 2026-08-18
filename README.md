@@ -289,7 +289,7 @@ Reports every `@deprecated` schema element an operation uses, so you can tell wh
 
 ```ts
 const { elements, truncated } = collectDeprecatedElementUsage({ schema, document, operation, operationName, variables })
-// elements:  [{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', deprecationReason: 'Use id.', path: '$input.legacyId' }]
+// elements:  [{ kind: 'input-field', name: 'WidgetFilterInput.legacyId', path: '$input.legacyId' }]
 // truncated: false
 ```
 
