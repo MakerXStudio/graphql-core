@@ -57,6 +57,31 @@ describe('createContextFactory', () => {
     expect(context.user?.id).toBe('oid-1')
   })
 
+  it('sets the default User token from extractToken', async () => {
+    const createContext = createContextFactory({
+      requestLogger: makeLogger(),
+      extractToken: ({ req }) => req.headers['x-goog-iap-jwt-assertion'] as string | undefined,
+    })
+
+    const context = await createContext({
+      req: makeRequest({ headers: { authorization: 'Bearer token-abc', 'x-goog-iap-jwt-assertion': 'assertion-jwt' } }),
+      claims: sampleClaims,
+    })
+
+    expect(context.user?.token).toBe('assertion-jwt')
+  })
+
+  it('sets an empty default User token when extractToken returns undefined', async () => {
+    const createContext = createContextFactory({ requestLogger: makeLogger(), extractToken: () => undefined })
+
+    const context = await createContext({
+      req: makeRequest({ headers: { authorization: 'Bearer token-abc' } }),
+      claims: sampleClaims,
+    })
+
+    expect(context.user?.token).toBe('')
+  })
+
   it('leaves user undefined when no claims and createUser is omitted', async () => {
     const createContext = createContextFactory({ requestLogger: makeLogger() })
     const context = await createContext({ req: makeRequest() })

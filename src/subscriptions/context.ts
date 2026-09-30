@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'http'
 import { User } from '../User'
 import type { CreateRequestLogger, GraphQLContext, JwtPayload, RequestInfo, RequestInfoLogKey } from '../context'
 import { buildConnectRequestInfo } from '../request-info'
-import { extractTokenFromConnectionParams } from './utils'
+import { defaultExtractSubscriptionToken } from './utils'
 
 export interface SubscriptionContextInput {
   connectRequest: IncomingMessage
@@ -15,6 +15,8 @@ export interface SubscriptionContextInput {
 export type CreateSubscriptionUser<T = User | undefined> = (input: SubscriptionContextInput) => Promise<T> | T
 export type CreateSubscriptionContext<TContext = GraphQLContext> = (input: SubscriptionContextInput) => Promise<TContext>
 export type AugmentSubscriptionRequestInfo = (input: SubscriptionContextInput) => Record<string, unknown>
+// The token is extracted before the connection is authenticated, so the input has no claims.
+export type ExtractSubscriptionToken = (input: Omit<SubscriptionContextInput, 'claims'>) => string | undefined
 
 // `createUser` is optional when TUser is compatible with the default `User | undefined`
 // (i.e. defaultCreateUser can satisfy it), and required when TUser is narrower.
@@ -28,6 +30,12 @@ export type CreateSubscriptionContextConfig<
   claimsToLog?: string[]
   requestInfoToLog?: Array<RequestInfoLogKey>
   augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
+  /**
+   * Returns the token that the default `createUser` sets as `User.token`. Use the same function as
+   * the `useSubscriptionsServer` `extractToken` option. Not called when you supply `createUser`.
+   * Defaults to the bearer token in the `authorization` or `Authorization` connection parameter.
+   */
+  extractToken?: ExtractSubscriptionToken
 } & ([User | undefined] extends [TUser] ? { createUser?: CreateSubscriptionUser<TUser> } : { createUser: CreateSubscriptionUser<TUser> })
 
 export const createSubscriptionContextFactory = <
@@ -40,7 +48,8 @@ export const createSubscriptionContextFactory = <
   const { requestLogger, augmentRequestInfo, claimsToLog, requestInfoToLog, augmentContext } = config
   // The conditional type on CreateSubscriptionContextConfig guarantees `createUser` is provided
   // when TUser is narrower than `User | undefined`, so defaulting is sound here.
-  const createUser = (config.createUser ?? defaultCreateUser) as CreateSubscriptionUser<TUser>
+  const createUser = (config.createUser ??
+    buildDefaultCreateUser(config.extractToken ?? defaultExtractSubscriptionToken)) as CreateSubscriptionUser<TUser>
 
   return async (input: SubscriptionContextInput) => {
     const { connectRequest: req, claims } = input
@@ -79,8 +88,9 @@ export const createSubscriptionContextFactory = <
   }
 }
 
-const defaultCreateUser: CreateSubscriptionUser<User | undefined> = ({ claims, connectionParams }) => {
-  if (!claims) return Promise.resolve(undefined)
-  const accessToken = extractTokenFromConnectionParams(connectionParams)
-  return Promise.resolve(new User(claims, accessToken ?? ''))
-}
+const buildDefaultCreateUser =
+  (extractToken: ExtractSubscriptionToken): CreateSubscriptionUser<User | undefined> =>
+  (input) => {
+    if (!input.claims) return Promise.resolve(undefined)
+    return Promise.resolve(new User(input.claims, extractToken(input) ?? ''))
+  }

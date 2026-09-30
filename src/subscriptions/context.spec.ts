@@ -49,6 +49,21 @@ describe('createSubscriptionContextFactory', () => {
     expect(context.user?.id).toBe('oid-1')
   })
 
+  it('sets the default User token from extractToken', async () => {
+    const createContext = createSubscriptionContextFactory({
+      requestLogger: makeLogger(),
+      extractToken: ({ connectRequest }) => connectRequest.headers['x-goog-iap-jwt-assertion'] as string | undefined,
+    })
+
+    const context = await createContext({
+      connectRequest: makeConnectRequest({ headers: { host: 'example.com', 'x-goog-iap-jwt-assertion': 'assertion-jwt' } }),
+      claims: sampleClaims,
+      connectionParams: { authorization: 'Bearer token-ws' },
+    })
+
+    expect(context.user?.token).toBe('assertion-jwt')
+  })
+
   it('leaves user undefined when no claims are provided', async () => {
     const createContext = createSubscriptionContextFactory({ requestLogger: makeLogger() })
     const context = await createContext({ connectRequest: makeConnectRequest() })

@@ -137,15 +137,15 @@ By default, if `claims` (decoded token `JwtPayload`) are available, the `GraphQL
 
 The User class adds some handy getters over raw claims (decodedJWT payload) and provides access to the JWT (access token) for on-behalf-of downstream authentication flows. Note this may represent a user or service principal (system) identity.
 
-| Property | Description                                                                                                         |
-| -------- | ------------------------------------------------------------------------------------------------------------------- |
-| claims   | The decoded JWT payload, set via the RequestInput.user field.                                                       |
-| token    | The bearer token from the request authorization header.                                                             |
-| email    | The user's email via coalesced claim values: email, emails, preferred_username, unique_name, upn.                   |
-| name     | The user's name (via the name or given_name and family_name claims).                                                |
-| id       | The user's unique and immutable ID, useful for contextual differentiation e.g. session keys (the oid or sub claim). |
-| scopes   | The user's scopes, via the scp claim split into an array of scopes.                                                 |
-| roles    | The user's roles (via the roles claim).                                                                             |
+| Property | Description                                                                                                                 |
+| -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| claims   | The decoded JWT payload, set via the RequestInput.user field.                                                               |
+| token    | The access token. By default, the bearer token from the `Authorization` header (see [Token extraction](#token-extraction)). |
+| email    | The user's email via coalesced claim values: email, emails, preferred_username, unique_name, upn.                           |
+| name     | The user's name (via the name or given_name and family_name claims).                                                        |
+| id       | The user's unique and immutable ID, useful for contextual differentiation e.g. session keys (the oid or sub claim).         |
+| scopes   | The user's scopes, via the scp claim split into an array of scopes.                                                         |
+| roles    | The user's roles (via the roles claim).                                                                                     |
 
 ### Custom user
 
@@ -162,6 +162,19 @@ const graphqlServer = createServer({
   context: ({ req }) => createContext({ req, claims: req.user, createUser }),
 })
 ```
+
+### Token extraction
+
+The default `createUser` sets `User.token` to the bearer token from the `Authorization` header. If clients authenticate another way, for example with a JWT assertion header that a proxy adds to the request, supply `extractToken` to return the token:
+
+```ts
+const createContext = createContextFactory({
+  requestLogger,
+  extractToken: ({ req }) => req.headers['x-goog-iap-jwt-assertion'] as string | undefined,
+})
+```
+
+`extractToken` is not called when you supply `createUser`. For subscriptions, see [GraphQL subscriptions](#graphql-subscriptions).
 
 ## Shield (authorization)
 
@@ -363,7 +376,7 @@ This library includes a `subscriptions` module to provide simple setup using the
 1. Create a subscriptions server, using the ws-server cleanup function in your server lifecycle.
 
    The `useSubscriptionsServer` function sets up:
-   - Auth token validation as part of establishing (or rejecting) the connection (behaviour defined by `verifyToken` and `requireAuth` args)
+   - Auth token validation as part of establishing (or rejecting) the connection (behaviour defined by `verifyToken`, `extractToken` and `requireAuth` args)
    - GraphQL context creation
    - Logging from the server `onConnect`, `onDisconnect`, `onOperation`, `onNext` and `onError` callbacks
 
@@ -399,6 +412,17 @@ This library includes a `subscriptions` module to provide simple setup using the
    ```
 
 1. For authorisation, clients can include a connection parameter named `authorization` or `Authorization` using the HTTP header format `Bearer <token>`. Note: [Apollo Sandbox](https://studio.apollographql.com/sandbox/explorer) will include an `Authorization` connection parameter when you specify an HTTP `Authorization` header via the UI.
+
+   If the token arrives another way, supply an `extractToken` function to both `useSubscriptionsServer` (which passes the token to `verifyToken`) and `createSubscriptionContextFactory` (which sets it as `User.token`). It receives the `connectRequest` (the HTTP upgrade request) and the `connectionParams`, and returns the token or `undefined`. For example, to read a JWT assertion header that a proxy adds to the upgrade request (browsers cannot set custom headers on a websocket request):
+
+   ```ts
+   const extractToken: ExtractSubscriptionToken = ({ connectRequest }) =>
+     connectRequest.headers['x-goog-iap-jwt-assertion'] as string | undefined
+
+   const createSubscriptionContext = createSubscriptionContextFactory({ requestLogger, extractToken })
+
+   useSubscriptionsServer({ schema, httpServer, logger, createSubscriptionContext, extractToken, requireAuth: true, verifyToken })
+   ```
 
 ### wrapSubscriptionIterator
 
