@@ -69,6 +69,7 @@ export type CreateRequestLogger<TUser = User | undefined, TLogger extends Logger
   user: TUser,
 ) => TLogger
 export type AugmentRequestInfo = (input: ContextInput) => Record<string, unknown>
+export type ExtractToken = (input: ContextInput) => string | undefined
 
 // `createUser` is optional when TUser is compatible with the default `User | undefined`
 // (i.e. `defaultCreateUser` can satisfy it), and required when TUser is narrower.
@@ -82,6 +83,12 @@ export type CreateContextConfig<
   claimsToLog?: string[]
   requestInfoToLog?: Array<RequestInfoLogKey>
   augmentContext?: (context: GraphQLContext<TLogger, RequestInfo, TUser>) => TAugment | Promise<TAugment>
+  /**
+   * Returns the token that the default `createUser` sets as `User.token`, e.g. from a JWT assertion
+   * header. Not called when you supply `createUser`. Defaults to the bearer token in the
+   * `Authorization` header.
+   */
+  extractToken?: ExtractToken
 } & ([User | undefined] extends [TUser] ? { createUser?: CreateUser<TUser> } : { createUser: CreateUser<TUser> })
 
 export const createContextFactory = <
@@ -94,7 +101,7 @@ export const createContextFactory = <
   const { requestLogger, augmentRequestInfo, claimsToLog, requestInfoToLog, augmentContext } = config
   // The conditional type on CreateContextConfig guarantees `createUser` is provided when TUser is
   // narrower than `User | undefined`, so defaulting to defaultCreateUser is sound here.
-  const createUser = (config.createUser ?? defaultCreateUser) as CreateUser<TUser>
+  const createUser = (config.createUser ?? buildDefaultCreateUser(config.extractToken ?? defaultExtractToken)) as CreateUser<TUser>
 
   return async (input: ContextInput) => {
     const { req, claims, context } = input
@@ -149,8 +156,14 @@ export const createContextFactory = <
   }
 }
 
-export const defaultCreateUser: CreateUser<User | undefined> = ({ req, claims }) => {
-  if (!claims) return Promise.resolve(undefined)
-  const accessToken = req.headers.authorization?.startsWith('Bearer') ? (req.headers.authorization?.substring(7) ?? '') : ''
-  return Promise.resolve(new User(claims, accessToken))
-}
+const defaultExtractToken: ExtractToken = ({ req }) =>
+  req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.substring(7) : undefined
+
+const buildDefaultCreateUser =
+  (extractToken: ExtractToken): CreateUser<User | undefined> =>
+  (input) => {
+    if (!input.claims) return Promise.resolve(undefined)
+    return Promise.resolve(new User(input.claims, extractToken(input) ?? ''))
+  }
+
+export const defaultCreateUser = buildDefaultCreateUser(defaultExtractToken)

@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'http'
+import type { ExtractSubscriptionToken } from './context'
 
 /**
  * Extracts a token from a connection parameter named `authorization` or `Authorization`.
@@ -12,6 +13,9 @@ export function extractTokenFromConnectionParams(connectionParams?: Readonly<Rec
   if (!bearerTokenValue?.startsWith('Bearer ')) return undefined
   return bearerTokenValue.substring(7)
 }
+
+export const defaultExtractSubscriptionToken: ExtractSubscriptionToken = ({ connectionParams }) =>
+  extractTokenFromConnectionParams(connectionParams)
 
 export function getHost(request: IncomingMessage) {
   const proxyHostHeader = request.headers['x-forwarded-host']

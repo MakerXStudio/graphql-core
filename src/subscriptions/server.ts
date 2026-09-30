@@ -7,8 +7,8 @@ import type { Server } from 'http'
 import { WebSocketServer } from 'ws'
 import type { GraphQLContext, JwtPayload } from '../context'
 import { logSubscriptionOperation } from '../logging'
-import type { CreateSubscriptionContext } from './context'
-import { extractTokenFromConnectionParams, getHost } from './utils'
+import type { CreateSubscriptionContext, ExtractSubscriptionToken } from './context'
+import { defaultExtractSubscriptionToken, getHost } from './utils'
 
 export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   schema,
@@ -18,6 +18,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   operationLogLevel = 'info',
   path = '/graphql',
   verifyToken,
+  extractToken = defaultExtractSubscriptionToken,
   requireAuth,
   jwtClaimsToLog = ['oid', 'iss'],
   resolveSubscriptionOperationLogger,
@@ -30,6 +31,12 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   operationLogLevel?: keyof TLogger
   path?: string
   verifyToken?: (host: string, token: string) => Promise<JwtPayload>
+  /**
+   * Returns the token to pass to `verifyToken`, e.g. from a JWT assertion header that a proxy adds
+   * to the connect request. Defaults to the bearer token in the `authorization` or `Authorization`
+   * connection parameter. Pass the same function to `createSubscriptionContextFactory`.
+   */
+  extractToken?: ExtractSubscriptionToken
   requireAuth?: boolean
   jwtClaimsToLog?: string[]
   resolveSubscriptionOperationLogger?: (context: GraphQLContext) => TLogger
@@ -59,10 +66,10 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
           return true
         }
 
-        const token = extractTokenFromConnectionParams(ctx.connectionParams)
+        const token = extractToken({ connectRequest: ctx.extra.request, connectionParams: ctx.connectionParams })
         if (!token) {
           if (requireAuth) {
-            logger.error('No authorization parameter was supplied via websocket connection params')
+            logger.error('No auth token was supplied with the websocket connection')
             return false
           }
           logger.info(connectionEstablished)
@@ -83,10 +90,10 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
       },
       onSubscribe: async (ctx) => {
         if (!verifyToken) return
-        const token = extractTokenFromConnectionParams(ctx.connectionParams)
+        const token = extractToken({ connectRequest: ctx.extra.request, connectionParams: ctx.connectionParams })
         if (!token) {
           if (requireAuth) {
-            logger.error('No authorization parameter was supplied via websocket connection params')
+            logger.error('No auth token was supplied with the websocket connection')
             ctx.extra.socket.close(CloseCode.Forbidden, 'Forbidden')
           }
           return
