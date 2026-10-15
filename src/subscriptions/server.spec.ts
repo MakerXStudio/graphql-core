@@ -10,8 +10,12 @@ import type { GraphQLContext, JwtPayload } from '../context'
 import { createSubscriptionContextFactory, type ExtractSubscriptionToken } from './context'
 import { useSubscriptionsServer } from './server'
 
+// How many times the bump mutation has run, so a test can tell that a refused operation did not run.
+let bumps = 0
+
 const schema = new GraphQLSchema({
   query: new GraphQLObjectType({ name: 'Query', fields: { ok: { type: GraphQLBoolean, resolve: () => true } } }),
+  mutation: new GraphQLObjectType({ name: 'Mutation', fields: { bump: { type: GraphQLInt, resolve: () => ++bumps } } }),
   subscription: new GraphQLObjectType({
     name: 'Subscription',
     fields: {
@@ -64,6 +68,8 @@ let cleanup: Array<() => Promise<void> | void> = []
 afterEach(async () => {
   for (const fn of cleanup.reverse()) await fn()
   cleanup = []
+  bumps = 0
+  vi.restoreAllMocks()
 })
 
 const startServer = async (options: Partial<Parameters<typeof useSubscriptionsServer>[0]>) => {
@@ -121,8 +127,14 @@ const watchTicks = (client: Client, ms: number) =>
     })
   })
 
-// Not rounded to whole seconds, so a future expiry is always the full offset away.
-const epochSeconds = (offsetSeconds: number) => Date.now() / 1000 + offsetSeconds
+const bump = (client: Client) =>
+  new Promise<unknown>((resolve, reject) => {
+    client.subscribe({ query: 'mutation { bump }' }, { next: ({ data }) => resolve(data?.bump), error: reject, complete: () => {} })
+  })
+
+// A verifyToken that accepts the token when the connection is established, and refuses it afterwards, as if it had expired.
+const verifiesOnce = () =>
+  vi.fn<(host: string, token: string) => Promise<JwtPayload>>().mockResolvedValueOnce(claims).mockRejectedValue(new Error('jwt expired'))
 
 const pingsWithin = async (url: string, ms: number) => {
   const socket = new WebSocket(url, 'graphql-transport-ws')
@@ -174,78 +186,102 @@ describe('useSubscriptionsServer', () => {
     expect(logger.error).toHaveBeenCalledWith('No auth token was supplied with the websocket connection')
   })
 
-  describe('closeOnTokenExpiry', () => {
-    const bearer = { connectionParams: { Authorization: 'Bearer token-params' } }
+  it('refuses an operation whose token no longer verifies, without running it', async () => {
+    const { url } = await startServer({ verifyToken: verifiesOnce(), requireAuth: true })
 
-    it('closes the connection with 4403 when the token expires, ending a running subscription', async () => {
-      const verifyToken = vi.fn(async () => ({ ...claims, exp: epochSeconds(1) }))
-      const { url, logger } = await startServer({ verifyToken, requireAuth: true, closeOnTokenExpiry: true })
+    await expect(bump(connect(url, { connectionParams: { Authorization: 'Bearer token-params' } }))).rejects.toMatchObject({ code: 4403 })
+
+    expect(bumps).toBe(0)
+  })
+
+  describe('connectionExpiry', () => {
+    const bearer = { connectionParams: { Authorization: 'Bearer token-params' } }
+    const endsIn = (ms: number) => () => Date.now() + ms
+
+    it('is given the claims that verifyToken returned', async () => {
+      const connectionExpiry = vi.fn(() => undefined)
+      const { url } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry })
+
+      await subscribeToToken(connect(url, bearer))
+
+      expect(connectionExpiry).toHaveBeenCalledWith(claims)
+    })
+
+    it('closes the connection with 4403 at the time it returns, ending a running subscription', async () => {
+      const { url, logger } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: endsIn(1000) })
 
       const result = await watchTicks(connect(url, bearer), 3000)
 
       expect(result.closeCode).toBe(4403)
       expect(result.ticks).toBeGreaterThan(0)
-      expect(logger.info).toHaveBeenCalledWith('Subscription connection auth token expired', {
+      expect(logger.info).toHaveBeenCalledWith('Subscription connection expired', {
         claims: { oid: 'oid-1', iss: 'https://issuer.example' },
       })
     })
 
-    it('closes the connection at once when the token has already expired', async () => {
-      const verifyToken = vi.fn(async () => ({ ...claims, exp: epochSeconds(-10) }))
-      const { url } = await startServer({ verifyToken, requireAuth: true, closeOnTokenExpiry: true })
+    it('closes the connection at once when that time has passed', async () => {
+      const { url } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: endsIn(-1000) })
 
       const result = await watchTicks(connect(url, bearer), 1000)
 
       expect(result.closeCode).toBe(4403)
     })
 
-    it('leaves the connection open when the option is not set', async () => {
-      const verifyToken = vi.fn(async () => ({ ...claims, exp: epochSeconds(-10) }))
-      const { url } = await startServer({ verifyToken, requireAuth: true })
+    it('lets the client subscribe again until then, without verifying the token again', async () => {
+      const verifyToken = verifiesOnce()
+      const { url } = await startServer({ verifyToken, requireAuth: true, connectionExpiry: endsIn(60_000) })
+      const client = connect(url, bearer)
 
-      const result = await watchTicks(connect(url, bearer), 200)
-
-      expect(result.closeCode).toBeUndefined()
-      expect(result.ticks).toBeGreaterThan(0)
+      expect(await subscribeToToken(client)).toBe('token-params')
+      expect(await bump(client)).toBe(1)
+      expect(verifyToken).toHaveBeenCalledTimes(1)
     })
 
-    it('leaves the connection open when the claims have no exp', async () => {
-      const verifyToken = vi.fn(async () => claims)
-      const { url } = await startServer({ verifyToken, requireAuth: true, closeOnTokenExpiry: true })
+    it('refuses an operation that arrives after that time, without running it', async () => {
+      const endsAt = Date.now() + 60_000
+      const { url } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: () => endsAt })
+      const client = connect(url, bearer)
+      await subscribeToToken(client)
 
-      const result = await watchTicks(connect(url, bearer), 200)
+      // Past the end, before the timer has fired.
+      vi.spyOn(Date, 'now').mockReturnValue(endsAt)
 
-      expect(result.closeCode).toBeUndefined()
-      expect(result.ticks).toBeGreaterThan(0)
+      await expect(bump(client)).rejects.toMatchObject({ code: 4403 })
+      expect(bumps).toBe(0)
+    })
+
+    it('verifies the token on each subscribe, as by default, when it returns undefined', async () => {
+      const verifyToken = verifiesOnce()
+      const { url } = await startServer({ verifyToken, requireAuth: true, connectionExpiry: () => undefined })
+
+      await expect(subscribeToToken(connect(url, bearer))).rejects.toMatchObject({ code: 4403 })
+
+      expect(verifyToken).toHaveBeenCalledTimes(2)
     })
 
     it('stops the timer when the client disconnects first', async () => {
-      const exp = epochSeconds(1)
-      const verifyToken = vi.fn(async () => ({ ...claims, exp }))
-      const { url, logger } = await startServer({ verifyToken, requireAuth: true, closeOnTokenExpiry: true })
+      const { url, logger } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: endsIn(1000) })
       const client = connect(url, bearer)
 
       await watchTicks(client, 50)
       await client.dispose()
-      await delay(exp * 1000 - Date.now() + 100)
+      await delay(1100)
 
       expect(logger.info).toHaveBeenCalledWith('Subscription connection disconnected', expect.anything())
-      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection auth token expired', expect.anything())
+      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection expired', expect.anything())
     })
 
     it('stops the timer when the client disconnects while a subscription waits for its next event', async () => {
-      const exp = epochSeconds(1)
-      const verifyToken = vi.fn(async () => ({ ...claims, exp }))
-      const { url, logger } = await startServer({ verifyToken, requireAuth: true, closeOnTokenExpiry: true })
+      const { url, logger } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: endsIn(1000) })
       const client = connect(url, bearer)
 
       await new Promise((resolve) =>
         client.subscribe({ query: 'subscription { stalls }' }, { next: resolve, error: resolve, complete: () => {} }),
       )
       await client.dispose()
-      await delay(exp * 1000 - Date.now() + 100)
+      await delay(1100)
 
-      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection auth token expired', expect.anything())
+      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection expired', expect.anything())
     })
   })
 
