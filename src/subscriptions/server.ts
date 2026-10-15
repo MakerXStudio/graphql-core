@@ -4,11 +4,14 @@ import type { GraphQLSchema } from 'graphql'
 import { CloseCode } from 'graphql-ws'
 import { useServer } from 'graphql-ws/use/ws'
 import type { Server } from 'http'
-import { WebSocketServer } from 'ws'
+import { WebSocketServer, type WebSocket } from 'ws'
 import type { GraphQLContext, JwtPayload } from '../context'
 import { logSubscriptionOperation } from '../logging'
 import type { CreateSubscriptionContext, ExtractSubscriptionToken } from './context'
 import { defaultExtractSubscriptionToken, getHost } from './utils'
+
+// The longest delay setTimeout accepts. A token that expires later than this is timed in steps.
+const maxTimeoutMs = 2 ** 31 - 1
 
 export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   schema,
@@ -23,6 +26,8 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   jwtClaimsToLog = ['oid', 'iss'],
   resolveSubscriptionOperationLogger,
   includeDeprecatedElements,
+  closeOnTokenExpiry,
+  keepAlive = 12_000,
 }: {
   schema: GraphQLSchema
   httpServer: Server
@@ -45,6 +50,24 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
    * established. Not collected per emitted payload: the usage is a property of the operation.
    */
   includeDeprecatedElements?: boolean
+  /**
+   * If true, a connection is closed with `4403 Forbidden` when its token expires, which ends every
+   * subscription running on it. graphql-ws clients retry that close code, so a client reconnects with
+   * a fresh token. The expiry is the `exp` claim that `verifyToken` returned when the connection was
+   * established: the token cannot change for the life of a connection, whether it arrives in the
+   * connection params or on the upgrade request. A connection without a token, or whose claims have
+   * no `exp`, is not timed.
+   *
+   * Without it, an expired token is refused only when the client next subscribes on the connection,
+   * and subscriptions already running continue.
+   */
+  closeOnTokenExpiry?: boolean
+  /**
+   * Milliseconds between the server's websocket pings. A connection that has not answered a ping by
+   * the time the next one is due is terminated. `0` turns the pings off. Defaults to graphql-ws's 12
+   * seconds.
+   */
+  keepAlive?: number
 }) {
   if (requireAuth && !verifyToken) throw new Error('verifyToken must be supplied when requireAuth is true')
 
@@ -52,6 +75,28 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
     server: httpServer,
     path,
   })
+
+  const expiryTimers = new WeakMap<WebSocket, NodeJS.Timeout>()
+  const closeAtExpiry = (socket: WebSocket, claims: JwtPayload) => {
+    // A client that went away while its token was being verified has already passed onClose.
+    if (typeof claims.exp !== 'number' || socket.readyState !== socket.OPEN) return
+    const expiresAt = claims.exp * 1000
+    const schedule = () => {
+      const remaining = expiresAt - Date.now()
+      const timer = setTimeout(
+        () => {
+          if (remaining > maxTimeoutMs) return schedule()
+          expiryTimers.delete(socket)
+          logger.info('Subscription connection auth token expired', { claims: pick(claims, jwtClaimsToLog) })
+          socket.close(CloseCode.Forbidden, 'Forbidden')
+        },
+        Math.min(Math.max(remaining, 0), maxTimeoutMs),
+      )
+      timer.unref()
+      expiryTimers.set(socket, timer)
+    }
+    schedule()
+  }
 
   return useServer(
     {
@@ -82,6 +127,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
           logger.info(connectionEstablished, {
             claims: pick(claims, jwtClaimsToLog),
           })
+          if (closeOnTokenExpiry) closeAtExpiry(ctx.extra.socket, claims)
           return true
         } catch (error) {
           logger.error('Failed to verify subscription connection auth token', { error })
@@ -108,6 +154,10 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
       onDisconnect({ extra: { claims } }) {
         logger.info('Subscription connection disconnected', { claims: pick(claims, jwtClaimsToLog) })
       },
+      onClose({ extra: { socket } }) {
+        clearTimeout(expiryTimers.get(socket))
+        expiryTimers.delete(socket)
+      },
       context: async (ctx) => {
         return createSubscriptionContext({
           connectRequest: ctx.extra.request,
@@ -129,5 +179,6 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
       },
     },
     wsServer,
+    keepAlive,
   )
 }

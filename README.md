@@ -382,6 +382,10 @@ This library includes a `subscriptions` module to provide simple setup using the
 
    Pass `includeDeprecatedElements: true` to add [deprecation usage](#collectdeprecatedelementusage) to the operation log entry as `deprecatedElements`. It is collected once, when the subscription is established, rather than per emitted payload — the usage is a property of the operation, not of each event.
 
+   Pass `closeOnTokenExpiry: true` to close a connection with `4403 Forbidden` when the `exp` of the token it connected with passes, which ends every subscription running on it. Without it, an expired token is refused only when the client next subscribes on the connection, and subscriptions already running continue. graphql-ws clients retry `4403`, so a client reconnects, and `connectionParams` (or whatever authorises the upgrade request) supplies a fresh token.
+
+   `keepAlive` sets the milliseconds between the server's websocket pings (default 12 seconds, graphql-ws's default; `0` turns them off). A connection that has not answered a ping by the time the next one is due is terminated. The pings also stop proxies and load balancers from closing an idle connection, so keep the interval below their idle timeouts.
+
    Example for Apollo Server (`wsServerCleanup` called in the `drainServer` plugin callback):
 
    ```ts
