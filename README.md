@@ -382,6 +382,24 @@ This library includes a `subscriptions` module to provide simple setup using the
 
    Pass `includeDeprecatedElements: true` to add [deprecation usage](#collectdeprecatedelementusage) to the operation log entry as `deprecatedElements`. It is collected once, when the subscription is established, rather than per emitted payload — the usage is a property of the operation, not of each event.
 
+   By default a connection's token is verified when the connection is established, and again each time the client subscribes on it. A token that no longer verifies then closes the connection with `4403 Forbidden`, and the operation is not run. Subscriptions already running continue until that happens.
+
+   To give connections a set lifetime instead, pass `connectionExpiry`. It receives the claims `verifyToken` returned and returns the time the connection ends, in milliseconds since the epoch (or `undefined` for the default behaviour). At that time the connection is closed with `4403`, which ends every subscription running on it, and a time already past refuses the connection. Until then the client may subscribe again without the token being verified again: a connection's token cannot change.
+
+   ```ts
+   // End each connection when its token expires
+   connectionExpiry: (claims) => (claims.exp === undefined ? undefined : claims.exp * 1000)
+
+   // A short-lived token (such as a proxy's assertion) that proves a longer session: connections last an hour from when the token was issued
+   connectionExpiry: (claims) => (claims.iat === undefined ? undefined : (claims.iat + 3600) * 1000)
+   ```
+
+   With a lifetime longer than the token's, a revoked session is noticed only when the connection ends.
+
+   graphql-ws clients retry `4403` by default, but a retry succeeds only with a fresh token: pass `connectionParams` to `createClient` as a function that returns a current token, or authenticate the upgrade request afresh (by a cookie and a proxy, for example). A client that sends the same expired token fails again until its `retryAttempts` run out, and its subscriptions then end with an error.
+
+   `keepAlive` sets the milliseconds between the server's websocket pings (default 12 seconds, graphql-ws's default; `0` turns them off). A connection that has not answered a ping by the time the next one is due is terminated. The pings also stop proxies and load balancers from closing an idle connection, so keep the interval below their idle timeouts.
+
    Example for Apollo Server (`wsServerCleanup` called in the `drainServer` plugin callback):
 
    ```ts

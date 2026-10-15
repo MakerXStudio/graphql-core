@@ -1,6 +1,6 @@
 {
   "name": "@makerx/graphql-core",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "private": false,
   "description": "A set of core GraphQL utilities that MakerX uses to build GraphQL APIs",
   "author": "MakerX",
@@ -96,6 +96,7 @@
     "ws": "^8.20.0"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "@graphql-tools/utils": "12.0.1"
   }
 }
