@@ -384,7 +384,7 @@ This library includes a `subscriptions` module to provide simple setup using the
 
    By default a connection's token is verified when the connection is established, and again each time the client subscribes on it. A token that no longer verifies then closes the connection with `4403 Forbidden`, and the operation is not run. Subscriptions already running continue until that happens.
 
-   To give connections a set lifetime instead, pass `connectionExpiry`. It receives the claims `verifyToken` returned and returns when the connection ends, in milliseconds since the epoch (or `undefined` for the default behaviour). At that time the connection is closed with `4403`, which ends every subscription running on it. Until then the client may subscribe again without the token being verified again: a connection's token cannot change.
+   To give connections a set lifetime instead, pass `connectionExpiry`. It receives the claims `verifyToken` returned and returns the time the connection ends, in milliseconds since the epoch (or `undefined` for the default behaviour). At that time the connection is closed with `4403`, which ends every subscription running on it, and a time already past refuses the connection. Until then the client may subscribe again without the token being verified again: a connection's token cannot change.
 
    ```ts
    // End each connection when its token expires

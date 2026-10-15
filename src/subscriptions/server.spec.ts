@@ -186,12 +186,30 @@ describe('useSubscriptionsServer', () => {
     expect(logger.error).toHaveBeenCalledWith('No auth token was supplied with the websocket connection')
   })
 
-  it('refuses an operation whose token no longer verifies, without running it', async () => {
-    const { url } = await startServer({ verifyToken: verifiesOnce(), requireAuth: true })
+  it('refuses an operation whose token no longer verifies, without running it or logging a server error', async () => {
+    const { url, logger } = await startServer({ verifyToken: verifiesOnce(), requireAuth: true })
 
     await expect(bump(connect(url, { connectionParams: { Authorization: 'Bearer token-params' } }))).rejects.toMatchObject({ code: 4403 })
 
     expect(bumps).toBe(0)
+    expect(logger.warn).toHaveBeenCalledWith('Subscription connection auth token is no longer valid', expect.anything())
+    expect(logger.error).not.toHaveBeenCalledWith('GraphQL subscriptions server error', expect.anything())
+  })
+
+  it('logs an operation error with its id', async () => {
+    const { url, logger } = await startServer({})
+    const client = connect(url)
+
+    await expect(
+      new Promise((resolve, reject) =>
+        client.subscribe({ query: 'subscription { nope }' }, { next: resolve, error: reject, complete: () => {} }),
+      ),
+    ).rejects.toBeDefined()
+
+    expect(logger.error).toHaveBeenCalledWith('GraphQL subscriptions server error', {
+      id: expect.any(String),
+      errors: [expect.objectContaining({ message: 'Cannot query field "nope" on type "Subscription".' })],
+    })
   })
 
   describe('connectionExpiry', () => {
@@ -219,12 +237,27 @@ describe('useSubscriptionsServer', () => {
       })
     })
 
-    it('closes the connection at once when that time has passed', async () => {
-      const { url } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: endsIn(-1000) })
+    it('refuses the connection, before acknowledging it, when that time has already passed', async () => {
+      const { url, logger } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: endsIn(-1000) })
 
       const result = await watchTicks(connect(url, bearer), 1000)
 
-      expect(result.closeCode).toBe(4403)
+      expect(result).toEqual({ ticks: 0, closeCode: 4403 })
+      expect(logger.warn).toHaveBeenCalledWith('Subscription connection has already expired', expect.anything())
+      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection established', expect.anything())
+    })
+
+    it('refuses the connection when it throws', async () => {
+      const connectionExpiry = () => {
+        throw new Error('no iat')
+      }
+      const { url, logger } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry })
+
+      const result = await watchTicks(connect(url, bearer), 1000)
+
+      expect(result).toEqual({ ticks: 0, closeCode: 4403 })
+      expect(logger.error).toHaveBeenCalledWith('Failed to compute subscription connection expiry', expect.anything())
+      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection established', expect.anything())
     })
 
     it('lets the client subscribe again until then, without verifying the token again', async () => {
@@ -239,7 +272,7 @@ describe('useSubscriptionsServer', () => {
 
     it('refuses an operation that arrives after that time, without running it', async () => {
       const endsAt = Date.now() + 60_000
-      const { url } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: () => endsAt })
+      const { url, logger } = await startServer({ verifyToken: async () => claims, requireAuth: true, connectionExpiry: () => endsAt })
       const client = connect(url, bearer)
       await subscribeToToken(client)
 
@@ -248,6 +281,7 @@ describe('useSubscriptionsServer', () => {
 
       await expect(bump(client)).rejects.toMatchObject({ code: 4403 })
       expect(bumps).toBe(0)
+      expect(logger.error).not.toHaveBeenCalledWith('GraphQL subscriptions server error', expect.anything())
     })
 
     it('verifies the token on each subscribe, as by default, when it returns undefined', async () => {

@@ -13,6 +13,13 @@ import { defaultExtractSubscriptionToken, getHost } from './utils'
 // The longest delay setTimeout accepts. A connection that ends later than this is timed in steps.
 const maxTimeoutMs = 2 ** 31 - 1
 
+// What onSubscribe returns for an operation it refuses, so onError can tell a refusal from a real error.
+class SubscriptionRefusedError extends GraphQLError {
+  constructor() {
+    super('Forbidden', { extensions: { code: 'FORBIDDEN' } })
+  }
+}
+
 export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   schema,
   httpServer,
@@ -51,11 +58,12 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
    */
   includeDeprecatedElements?: boolean
   /**
-   * When a connection ends, from the claims `verifyToken` returned when it was established: a time in
-   * milliseconds since the epoch, or `undefined` for the default behaviour below.
+   * Returns the time a connection ends, in milliseconds since the epoch, from the claims `verifyToken`
+   * returned when it was established. `undefined` keeps the default behaviour below.
    *
    * When it returns a time:
-   * - At that time the connection is closed with `4403 Forbidden`, which ends every subscription
+   * - A time already past refuses the connection with `4403 Forbidden`, as an invalid token does.
+   * - Otherwise at that time the connection is closed with `4403`, which ends every subscription
    *   running on it.
    * - Until then the client may subscribe again on the connection, and the token is not verified
    *   again: it was verified when the connection was established, and it cannot change for the life
@@ -123,14 +131,16 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   // close if onSubscribe returned nothing.
   const refuse = (socket: WebSocket) => {
     socket.close(CloseCode.Forbidden, 'Forbidden')
-    return [new GraphQLError('Forbidden')]
+    return [new SubscriptionRefusedError()]
   }
 
   return useServer(
     {
       schema,
-      onError(_ctx, message, errors) {
-        logger.error('GraphQL subscriptions server error', { message, errors })
+      onError(_ctx, id, _payload, errors) {
+        // A refusal is already logged, and is not a server error.
+        if (errors.every((error) => error instanceof SubscriptionRefusedError)) return
+        logger.error('GraphQL subscriptions server error', { id, errors })
       },
       onConnect: async (ctx) => {
         const connectionEstablished = 'Subscription connection established'
@@ -149,19 +159,34 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
           return true
         }
 
+        let claims: JwtPayload
         try {
-          const claims = await verifyToken(getHost(ctx.extra.request), token)
-          ctx.extra.claims = claims as unknown as undefined
-          logger.info(connectionEstablished, {
-            claims: pick(claims, jwtClaimsToLog),
-          })
-          const endsAt = connectionExpiry?.(claims)
-          if (endsAt !== undefined) endConnectionAt(ctx.extra.socket, endsAt, claims)
-          return true
+          claims = await verifyToken(getHost(ctx.extra.request), token)
         } catch (error) {
           logger.error('Failed to verify subscription connection auth token', { error })
           return false
         }
+
+        let endsAt: number | undefined
+        try {
+          endsAt = connectionExpiry?.(claims)
+        } catch (error) {
+          logger.error('Failed to compute subscription connection expiry', { claims: pick(claims, jwtClaimsToLog), error })
+          return false
+        }
+        // Refused before the connection is acknowledged: an acknowledged connection resets a graphql-ws
+        // client's retry count, so closing it at once would have the client reconnect without end.
+        if (endsAt !== undefined && !(endsAt > Date.now())) {
+          logger.warn('Subscription connection has already expired', { claims: pick(claims, jwtClaimsToLog) })
+          return false
+        }
+
+        ctx.extra.claims = claims as unknown as undefined
+        logger.info(connectionEstablished, {
+          claims: pick(claims, jwtClaimsToLog),
+        })
+        if (endsAt !== undefined) endConnectionAt(ctx.extra.socket, endsAt, claims)
+        return true
       },
       onSubscribe: async (ctx) => {
         if (!verifyToken) return
