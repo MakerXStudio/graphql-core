@@ -30,6 +30,15 @@ const schema = new GraphQLSchema({
           }
         },
       },
+      // Yields once, then waits for an event that never comes, as a subscription does between events. graphql-ws's
+      // onClose waits for every subscription on the connection to return, which this one cannot do while it waits.
+      stalls: {
+        type: GraphQLInt,
+        subscribe: async function* () {
+          yield { stalls: 1 }
+          await new Promise(() => {})
+        },
+      },
     },
   }),
 })
@@ -112,7 +121,8 @@ const watchTicks = (client: Client, ms: number) =>
     })
   })
 
-const epochSeconds = (offsetSeconds: number) => Math.floor(Date.now() / 1000) + offsetSeconds
+// Not rounded to whole seconds, so a future expiry is always the full offset away.
+const epochSeconds = (offsetSeconds: number) => Date.now() / 1000 + offsetSeconds
 
 const pingsWithin = async (url: string, ms: number) => {
   const socket = new WebSocket(url, 'graphql-transport-ws')
@@ -220,6 +230,21 @@ describe('useSubscriptionsServer', () => {
       await delay(exp * 1000 - Date.now() + 100)
 
       expect(logger.info).toHaveBeenCalledWith('Subscription connection disconnected', expect.anything())
+      expect(logger.info).not.toHaveBeenCalledWith('Subscription connection auth token expired', expect.anything())
+    })
+
+    it('stops the timer when the client disconnects while a subscription waits for its next event', async () => {
+      const exp = epochSeconds(1)
+      const verifyToken = vi.fn(async () => ({ ...claims, exp }))
+      const { url, logger } = await startServer({ verifyToken, requireAuth: true, closeOnTokenExpiry: true })
+      const client = connect(url, bearer)
+
+      await new Promise((resolve) =>
+        client.subscribe({ query: 'subscription { stalls }' }, { next: resolve, error: resolve, complete: () => {} }),
+      )
+      await client.dispose()
+      await delay(exp * 1000 - Date.now() + 100)
+
       expect(logger.info).not.toHaveBeenCalledWith('Subscription connection auth token expired', expect.anything())
     })
   })

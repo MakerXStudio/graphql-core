@@ -52,11 +52,16 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   includeDeprecatedElements?: boolean
   /**
    * If true, a connection is closed with `4403 Forbidden` when its token expires, which ends every
-   * subscription running on it. graphql-ws clients retry that close code, so a client reconnects with
-   * a fresh token. The expiry is the `exp` claim that `verifyToken` returned when the connection was
-   * established: the token cannot change for the life of a connection, whether it arrives in the
-   * connection params or on the upgrade request. A connection without a token, or whose claims have
-   * no `exp`, is not timed.
+   * subscription running on it. The expiry is the `exp` claim that `verifyToken` returned when the
+   * connection was established: the token cannot change for the life of a connection, whether it
+   * arrives in the connection params or on the upgrade request. A connection without a token, or whose
+   * claims have no `exp`, is not timed.
+   *
+   * graphql-ws clients retry `4403` by default, but a retry succeeds only with a fresh token: the
+   * client's `connectionParams` must be a function that returns a current token, or the upgrade
+   * request must be authenticated afresh (by a cookie and a proxy, for example). A client that sends
+   * the same expired token fails again until its `retryAttempts` run out, and its subscriptions then
+   * end with an error.
    *
    * Without it, an expired token is refused only when the client next subscribes on the connection,
    * and subscriptions already running continue.
@@ -76,24 +81,26 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
     path,
   })
 
-  const expiryTimers = new WeakMap<WebSocket, NodeJS.Timeout>()
   const closeAtExpiry = (socket: WebSocket, claims: JwtPayload) => {
-    // A client that went away while its token was being verified has already passed onClose.
+    // A client that went away while its token was being verified has already closed the socket.
     if (typeof claims.exp !== 'number' || socket.readyState !== socket.OPEN) return
     const expiresAt = claims.exp * 1000
+    let timer: NodeJS.Timeout | undefined
+    // The socket's own close event, not graphql-ws's onClose, which waits for every subscription on the connection to
+    // return. A subscription waiting for its next event can hold that up indefinitely.
+    socket.once('close', () => clearTimeout(timer))
     const schedule = () => {
       const remaining = expiresAt - Date.now()
-      const timer = setTimeout(
+      timer = setTimeout(
         () => {
           if (remaining > maxTimeoutMs) return schedule()
-          expiryTimers.delete(socket)
+          if (socket.readyState !== socket.OPEN) return
           logger.info('Subscription connection auth token expired', { claims: pick(claims, jwtClaimsToLog) })
           socket.close(CloseCode.Forbidden, 'Forbidden')
         },
         Math.min(Math.max(remaining, 0), maxTimeoutMs),
       )
       timer.unref()
-      expiryTimers.set(socket, timer)
     }
     schedule()
   }
@@ -153,10 +160,6 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
       },
       onDisconnect({ extra: { claims } }) {
         logger.info('Subscription connection disconnected', { claims: pick(claims, jwtClaimsToLog) })
-      },
-      onClose({ extra: { socket } }) {
-        clearTimeout(expiryTimers.get(socket))
-        expiryTimers.delete(socket)
       },
       context: async (ctx) => {
         return createSubscriptionContext({
