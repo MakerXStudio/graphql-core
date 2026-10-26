@@ -261,13 +261,19 @@ describe('useSubscriptionsServer', () => {
       expect(await bump(client, 'mutation')).toBe(1)
     })
 
-    it('leaves an invalid document for graphql-ws to report', async () => {
-      const { url } = await startServer({})
+    it.each([
+      ['does not parse', 'mutation {', undefined, { code: 4500, reason: expect.stringContaining('Syntax Error') }],
+      ['has no operation that operationName selects', 'mutation Bump { bump }', 'Nope', [{ message: 'Unable to identify operation' }]],
+    ])('leaves a document that %s for graphql-ws to report', async (_case, query, operationName, expected) => {
+      const { url, logger } = await startServer({})
 
       const result = new Promise((resolve, reject) => {
-        connect(url).subscribe({ query: 'subscription { missing }' }, { next: resolve, error: reject, complete: () => {} })
+        connect(url).subscribe({ query, operationName }, { next: resolve, error: reject, complete: () => {} })
       })
-      await expect(result).rejects.toMatchObject([{ message: expect.stringContaining('missing') }])
+
+      await expect(result).rejects.toMatchObject(expected)
+      expect(bumps).toBe(0)
+      expect(logger.warn).not.toHaveBeenCalledWith('Subscription connection refused a non-subscription operation', expect.anything())
     })
   })
 
