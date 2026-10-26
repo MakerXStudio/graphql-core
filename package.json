@@ -74,7 +74,7 @@
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.59.0",
     "@typescript-eslint/parser": "^8.59.0",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "better-npm-audit": "^3.11.0",
     "copyfiles": "^2.4.1",
     "es-toolkit": "^1.46.0",
@@ -92,11 +92,11 @@
     "rollup": "^4.60.2",
     "tsx": "4.21.0",
     "typescript": "^6.0.3",
-    "vitest": "4.1.11",
+    "vitest": "4.1.12",
     "ws": "^8.20.0"
   },
   "overrides": {
     "esbuild": "^0.28.1",
-    "@graphql-tools/utils": "12.0.1"
+    "@graphql-tools/utils": "12.1.0"
   }
 }
