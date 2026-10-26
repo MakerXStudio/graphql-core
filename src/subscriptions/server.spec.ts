@@ -10,7 +10,7 @@ import type { GraphQLContext, JwtPayload } from '../context'
 import { createSubscriptionContextFactory, type ExtractSubscriptionToken } from './context'
 import { useSubscriptionsServer } from './server'
 
-// How many times the bump mutation has run, so a test can tell that a refused operation did not run.
+// How many times a bump operation has run, so a test can tell that a refused operation did not run.
 let bumps = 0
 
 const schema = new GraphQLSchema({
@@ -19,6 +19,12 @@ const schema = new GraphQLSchema({
   subscription: new GraphQLObjectType({
     name: 'Subscription',
     fields: {
+      bump: {
+        type: GraphQLInt,
+        subscribe: async function* () {
+          yield { bump: ++bumps }
+        },
+      },
       token: {
         type: GraphQLString,
         subscribe: async function* (_source: unknown, _args: unknown, context: GraphQLContext) {
@@ -127,9 +133,10 @@ const watchTicks = (client: Client, ms: number) =>
     })
   })
 
-const bump = (client: Client) =>
+const bump = (client: Client, operationType: 'query' | 'mutation' | 'subscription' = 'subscription') =>
   new Promise<unknown>((resolve, reject) => {
-    client.subscribe({ query: 'mutation { bump }' }, { next: ({ data }) => resolve(data?.bump), error: reject, complete: () => {} })
+    const query = operationType === 'query' ? '{ ok }' : `${operationType} { bump }`
+    client.subscribe({ query }, { next: ({ data }) => resolve(data?.bump ?? data?.ok), error: reject, complete: () => {} })
   })
 
 // A verifyToken that accepts the token when the connection is established, and refuses it afterwards, as if it had expired.
@@ -209,6 +216,64 @@ describe('useSubscriptionsServer', () => {
     expect(logger.error).toHaveBeenCalledWith('GraphQL subscriptions server error', {
       id: expect.any(String),
       errors: [expect.objectContaining({ message: 'Cannot query field "nope" on type "Subscription".' })],
+    })
+  })
+
+  describe('allowQueriesAndMutations', () => {
+    it.each(['query', 'mutation'] as const)(
+      'refuses a %s operation by default, without running it or closing the connection',
+      async (operationType) => {
+        const { url, logger } = await startServer({})
+        const client = connect(url)
+
+        await expect(bump(client, operationType)).rejects.toMatchObject([{ extensions: { code: 'BAD_REQUEST' } }])
+
+        expect(bumps).toBe(0)
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Subscription connection refused a non-subscription operation',
+          expect.objectContaining({ operationType }),
+        )
+        expect(logger.error).not.toHaveBeenCalledWith('GraphQL subscriptions server error', expect.anything())
+        expect(await bump(client)).toBe(1)
+      },
+    )
+
+    it('refuses the operation that operationName selects from a document that also has a subscription', async () => {
+      const { url } = await startServer({})
+      const client = connect(url)
+
+      const result = new Promise((resolve, reject) => {
+        client.subscribe(
+          { query: 'subscription Watch { bump } mutation Bump { bump }', operationName: 'Bump' },
+          { next: resolve, error: reject, complete: () => {} },
+        )
+      })
+
+      await expect(result).rejects.toMatchObject([{ extensions: { code: 'BAD_REQUEST' } }])
+      expect(bumps).toBe(0)
+    })
+
+    it('runs query and mutation operations when true', async () => {
+      const { url } = await startServer({ allowQueriesAndMutations: true })
+      const client = connect(url)
+
+      expect(await bump(client, 'query')).toBe(true)
+      expect(await bump(client, 'mutation')).toBe(1)
+    })
+
+    it.each([
+      ['does not parse', 'mutation {', undefined, { code: 4500, reason: expect.stringContaining('Syntax Error') }],
+      ['has no operation that operationName selects', 'mutation Bump { bump }', 'Nope', [{ message: 'Unable to identify operation' }]],
+    ])('leaves a document that %s for graphql-ws to report', async (_case, query, operationName, expected) => {
+      const { url, logger } = await startServer({})
+
+      const result = new Promise((resolve, reject) => {
+        connect(url).subscribe({ query, operationName }, { next: resolve, error: reject, complete: () => {} })
+      })
+
+      await expect(result).rejects.toMatchObject(expected)
+      expect(bumps).toBe(0)
+      expect(logger.warn).not.toHaveBeenCalledWith('Subscription connection refused a non-subscription operation', expect.anything())
     })
   })
 

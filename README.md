@@ -379,6 +379,9 @@ This library includes a `subscriptions` module to provide simple setup using the
    - Auth token validation as part of establishing (or rejecting) the connection (behaviour defined by `verifyToken`, `extractToken` and `requireAuth` args)
    - GraphQL context creation
    - Logging from the server `onConnect`, `onDisconnect`, `onOperation`, `onNext` and `onError` callbacks
+   - Refusal of query and mutation operations (see below)
+
+   By default the server runs only subscription operations. It refuses a query or mutation operation with a `BAD_REQUEST` error, and does not close the connection. Queries and mutations sent over the websocket do not go through the HTTP request pipeline, so they bypass its checks (Express middleware, Apollo Server plugins, rate limits and similar). Pass `allowQueriesAndMutations: true` to run them, but only when the websocket path applies the same checks. Before 3.6.0 the server ran all operation types.
 
    Pass `includeDeprecatedElements: true` to add [deprecation usage](#collectdeprecatedelementusage) to the operation log entry as `deprecatedElements`. It is collected once, when the subscription is established, rather than per emitted payload — the usage is a property of the operation, not of each event.
 
