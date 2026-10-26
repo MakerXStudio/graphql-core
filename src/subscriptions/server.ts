@@ -1,6 +1,6 @@
 import type { Logger } from '@makerx/node-common'
 import { pick } from 'es-toolkit/compat'
-import { GraphQLError, type GraphQLSchema } from 'graphql'
+import { getOperationAST, GraphQLError, parse, type DocumentNode, type GraphQLSchema } from 'graphql'
 import { CloseCode } from 'graphql-ws'
 import { useServer } from 'graphql-ws/use/ws'
 import type { Server } from 'http'
@@ -15,9 +15,22 @@ const maxTimeoutMs = 2 ** 31 - 1
 
 // What onSubscribe returns for an operation it refuses, so onError can tell a refusal from a real error.
 class SubscriptionRefusedError extends GraphQLError {
-  constructor() {
-    super('Forbidden', { extensions: { code: 'FORBIDDEN' } })
+  constructor(message = 'Forbidden', code = 'FORBIDDEN') {
+    super(message, { extensions: { code } })
   }
+}
+
+// The type of the operation the client asked to run, or undefined when graphql-ws must report the
+// document as invalid.
+const operationTypeOf = (query: unknown, operationName: string | null | undefined) => {
+  if (typeof query !== 'string') return undefined
+  let document: DocumentNode
+  try {
+    document = parse(query)
+  } catch {
+    return undefined
+  }
+  return getOperationAST(document, operationName)?.operation
 }
 
 export function useSubscriptionsServer<TLogger extends Logger = Logger>({
@@ -35,6 +48,7 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
   includeDeprecatedElements,
   connectionExpiry,
   keepAlive = 12_000,
+  allowQueriesAndMutations = false,
 }: {
   schema: GraphQLSchema
   httpServer: Server
@@ -92,6 +106,16 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
    * seconds.
    */
   keepAlive?: number
+  /**
+   * If true, the server also runs query and mutation operations. By default it runs only
+   * subscription operations, and refuses the others with a `BAD_REQUEST` error. The connection
+   * stays open.
+   *
+   * Queries and mutations sent over the websocket do not go through the HTTP request pipeline, so
+   * they bypass its checks (middleware, Apollo Server plugins, rate limits and similar). Set this
+   * only when the websocket path applies the same checks.
+   */
+  allowQueriesAndMutations?: boolean
 }) {
   if (requireAuth && !verifyToken) throw new Error('verifyToken must be supplied when requireAuth is true')
 
@@ -188,30 +212,44 @@ export function useSubscriptionsServer<TLogger extends Logger = Logger>({
         if (endsAt !== undefined) endConnectionAt(ctx.extra.socket, endsAt, claims)
         return true
       },
-      onSubscribe: async (ctx) => {
-        if (!verifyToken) return
-        const endsAt = connectionEnds.get(ctx.extra.socket)
-        if (endsAt !== undefined) {
-          // The token stands for the life connectionExpiry gave the connection. This covers an operation that
-          // arrives before the timer closes the connection.
-          if (Date.now() < endsAt) return
-          logger.warn('Subscription connection has expired', { claims: pick(ctx.extra.claims, jwtClaimsToLog) })
-          return refuse(ctx.extra.socket)
-        }
-        const token = extractToken({ connectRequest: ctx.extra.request, connectionParams: ctx.connectionParams })
-        if (!token) {
-          if (requireAuth) {
-            logger.error('No auth token was supplied with the websocket connection')
+      onSubscribe: async (ctx, _id, payload) => {
+        // Returns the errors that refuse the operation, or undefined when the connection may run it.
+        const authorise = async () => {
+          if (!verifyToken) return
+          const endsAt = connectionEnds.get(ctx.extra.socket)
+          if (endsAt !== undefined) {
+            // The token stands for the life connectionExpiry gave the connection. This covers an operation that
+            // arrives before the timer closes the connection.
+            if (Date.now() < endsAt) return
+            logger.warn('Subscription connection has expired', { claims: pick(ctx.extra.claims, jwtClaimsToLog) })
             return refuse(ctx.extra.socket)
           }
-          return
+          const token = extractToken({ connectRequest: ctx.extra.request, connectionParams: ctx.connectionParams })
+          if (!token) {
+            if (requireAuth) {
+              logger.error('No auth token was supplied with the websocket connection')
+              return refuse(ctx.extra.socket)
+            }
+            return
+          }
+          try {
+            await verifyToken(getHost(ctx.extra.request), token)
+          } catch (error) {
+            logger.warn('Subscription connection auth token is no longer valid', { claims: pick(ctx.extra.claims, jwtClaimsToLog), error })
+            return refuse(ctx.extra.socket)
+          }
         }
-        try {
-          await verifyToken(getHost(ctx.extra.request), token)
-        } catch (error) {
-          logger.warn('Subscription connection auth token is no longer valid', { claims: pick(ctx.extra.claims, jwtClaimsToLog), error })
-          return refuse(ctx.extra.socket)
-        }
+        const refused = await authorise()
+        if (refused) return refused
+        if (allowQueriesAndMutations) return
+        const operationType = operationTypeOf(payload.query, payload.operationName)
+        if (operationType === undefined || operationType === 'subscription') return
+        logger.warn('Subscription connection refused a non-subscription operation', {
+          operationType,
+          operationName: payload.operationName,
+          claims: pick(ctx.extra.claims, jwtClaimsToLog),
+        })
+        return [new SubscriptionRefusedError(`Only subscription operations are allowed, not ${operationType} operations`, 'BAD_REQUEST')]
       },
       onDisconnect({ extra: { claims } }) {
         logger.info('Subscription connection disconnected', { claims: pick(claims, jwtClaimsToLog) })
